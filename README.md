@@ -15,3 +15,11 @@ void main() {
     std:println(msg);
 }
 ```
+
+Most of the various md file are for my own notes, but I'll clean that up as I work. Don't assume everything written is accurate unless I note it here.
+
+### The Pipeline: 
+LLPC is an imntermediate language between the theoretical LALUL and LASM, with the following chain being the order of compilation.
+
+LALUL -> LLPC -> LLIR -> LASM \
+The LLPC to LLIR compiler is this project and the LLIR to LASM project is in a seperate repo (but will eventually be merged here). LALUL to LLPC is a streach goal.
