@@ -1,0 +1,16 @@
+Token {
+    data: Str
+    lspace: bool
+    rspace: bool
+    dtype: TokenType
+}
+
+TokenType = enum {
+    bin_op,
+    un_op,
+    fn_call,
+    type_cast,
+    structural,
+    ident,
+    num,
+}
