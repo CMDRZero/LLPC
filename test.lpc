@@ -1,12 +1,5 @@
-u16 x, u32 y = func();
-
-void main() {}
-
-struct obj {
-    u16 field1;
-    u16 field2;
-
-    static void print() {}
+void main() {
+    int sum = 2 + 2;
+    assert sum == 4;
+    std:println(msg);
 }
-
-(u16, u1) AddWithCarry(u16 copy lhs, u16 rhs) {};
