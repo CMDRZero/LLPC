@@ -125,7 +125,7 @@ fn CanCoerceToUnary(tkn: Token) bool {
     return false;
 }
 
-fn StrEq(lhs: Str, rhs: []const u8) bool {
+pub fn StrEq(lhs: Str, rhs: []const u8) bool {
     if (lhs.end - lhs.start != rhs.len) return false;
     for (rhs, 0..) |char, ind| {
         if (lhs.IndexStart(@intCast(ind)) != char) return false;

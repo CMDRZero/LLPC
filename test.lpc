@@ -1,3 +1,5 @@
+int x = 2 +  -4;
+
 void main() {
     int sum = 2 + 2;
     assert sum == 4;

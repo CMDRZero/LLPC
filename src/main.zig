@@ -9,6 +9,8 @@ const ShowErrorAtPoint = @import("errors.zig").ShowErrorAtPoint;
 const tokenizer = @import("tokenizer.zig");
 const Token = tokenizer.Token;
 
+const ast = @import("ast.zig");
+
 ///Here I'm using a global struct so I can test using different globals if need be, and so it can be passed around.
 ///Furthermore:
 /// - A function with no global arg is pure
@@ -33,22 +35,23 @@ pub fn main() !void {
         .stdout = stdout,
         .stdin = stdin,
     };
-    //Print(global, "Main started, IO is running\n", .{});
     
     const path = "test.lpc";
     var data = try OpenFile(global, path);
     
     var tokens = Vec(Token).init(global.allocator);
 
-    tokenizer.ExprToTokens(&data, &tokens) catch {DPrint("Tokenization Error\n", .{}); return;};
+    _ = ast.ParseExprToAST(&data, &tokens, global.allocator) catch {DPrint("Tokenization Error\n", .{}); return;};
+
+    //tokenizer.ExprToTokens(&data, &tokens) catch {DPrint("Tokenization Error\n", .{}); return;};
 
     //tokens.items[3].data.Error("Test Error\n", .{});
     
     for (0..tokens.items.len) |idx| {
         DPrint("Token_{} is {any}\n", .{idx, tokens.items[idx]});
     }
-    
-    //DPrint("data is {any}\n", .{data});
+
+    DPrint("Max Prec is {}", .{ast.maxprec});
 }
 
 //  * * * * * * * * * * * * * * * * * * * *          * * * * * * * * * * * * * * * * * * * *  
@@ -59,9 +62,7 @@ pub fn main() !void {
 fn OpenFile(global: Global, path: [] const u8) !Str {
     const alloc = global.allocator;
     const slice = try std.fs.cwd().readFileAlloc(alloc, path, 1<<32);
-    //const slice = try std.fs.cwd().readFileAllocOptions(alloc, path, 1<<32, null, @alignOf(u8), '\x00');
     const str = Str.FromSlice(slice);
-    //try str.PadAtEnd();
     return str;
 }
 
