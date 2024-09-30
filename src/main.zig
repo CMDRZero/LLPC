@@ -11,6 +11,8 @@ const Token = tokenizer.Token;
 
 const ast = @import("ast.zig");
 
+const tokenslib = @import("tokens.zig");
+
 ///Here I'm using a global struct so I can test using different globals if need be, and so it can be passed around.
 ///Furthermore:
 /// - A function with no global arg is pure
@@ -40,6 +42,7 @@ pub fn main() !void {
     var data = try OpenFile(global, path);
     
     var tokens = Vec(Token).init(global.allocator);
+    _ = tokenslib.TokenType._do;
 
     _ = ast.ParseExprToAST(&data, &tokens, global.allocator) catch {DPrint("Tokenization Error\n", .{}); return;};
 

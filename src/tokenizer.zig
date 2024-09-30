@@ -34,21 +34,21 @@ const TokenType = enum {
 };
 
 const TokenFlag = packed struct {
-    //Is the token coersible to a value type? 
+    //Is the token coersible to a value type?
     isVal: bool,
     //Can the token reduce to the left?
     canRedLeft: bool,
     //Can the token reduce to the right?
     canRedRight: bool,
 
-    const Normal: TokenFlag = .{.isVal = true, .canRedLeft = true, .canRedRight = true};
-    const Left: TokenFlag = .{.isVal = true, .canRedLeft = false, .canRedRight = true};
-    const Right: TokenFlag = .{.isVal = true, .canRedLeft = true, .canRedRight = false};
-    const None: TokenFlag = .{.isVal = false, .canRedLeft = false, .canRedRight = false};
+    const Normal: TokenFlag = .{ .isVal = true, .canRedLeft = true, .canRedRight = true };
+    const Left: TokenFlag = .{ .isVal = true, .canRedLeft = false, .canRedRight = true };
+    const Right: TokenFlag = .{ .isVal = true, .canRedLeft = true, .canRedRight = false };
+    const None: TokenFlag = .{ .isVal = false, .canRedLeft = false, .canRedRight = false };
 };
 
 fn GreedySort(ary: *[][]const u8) @TypeOf(ary) {
-    const local = struct{
+    const local = struct {
         fn CompareSliceLen(_: void, lhs: []const u8, rhs: []const u8) bool {
             return lhs.len > rhs.len;
         }
@@ -57,23 +57,95 @@ fn GreedySort(ary: *[][]const u8) @TypeOf(ary) {
     return ary;
 }
 
+const ArithOps = ([_][]const u8{
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
+    "<<<",
+    "<<",
+    ">>>",
+    ">>",
+});
+const BitwiseOps = ([_][]const u8{
+    "&",
+    "^",
+    "|",
+});
+const ComparisonOps = ([_][]const u8{
+    "<=",
+    "<",
+    "==",
+    ">=",
+    ">",
+    "!=",
+});
+const BooleanOps = ([_][]const u8{
+    "and",
+    "or",
+});
+const UnaryOps = ([_][]const u8{ "!", "~", "+", "-" });
+const FieldOps = ([_][]const u8{
+    ".*",
+    ".&",
+    ".",
+    ":",
+});
+const AssgOps = ([_][]const u8{
+    "=",
+    "+=",
+    "-=",
+    "*=",
+    "/=",
+    "%=",
+    "<<<=",
+    "<<=",
+    ">>>=",
+    ">>=",
+    "&=",
+    "^=",
+    "|=",
+});
+const RDirStructSyms = ([_][]const u8{
+    "(",
+    "{",
+    "[",
+});
+const LDirStructSyms = ([_][]const u8{
+    ")",
+    "}",
+    "]",
+});
+const CDirStructSyms = ([_][]const u8{
+    ";",
+    ",",
+});
+const StructSyms = LDirStructSyms ++ RDirStructSyms ++ CDirStructSyms;
+const KeyWords = ([_][]const u8{
+    "if",
+    "while",
+    "do",
+    "var",
+    "const",
+    "mut",
+    "static",
+    "struct",
+    "enum",
+    "union",
+    "break",
+    "continue",
+    "true",
+    "false",
+    "goto",
+    "inline",
+    "return",
+    "switch",
+    "assert",
+});
 
-const ArithOps       = ([_][]const u8 {"+", "-", "*", "/", "%", "<<<", "<<", ">>>", ">>",});
-const BitwiseOps     = ([_][]const u8 {"&", "^", "|",});
-const ComparisonOps  = ([_][]const u8 {"<=", "<", "==", ">=", ">", "!=",});
-const BooleanOps     = ([_][]const u8 {"and", "or",});
-const UnaryOps       = ([_][]const u8 {"!", "~", "+", "-"});
-const FieldOps       = ([_][]const u8 {".*", ".&", ".", ":",});
-const AssgOps        = ([_][]const u8 {"=", "+=", "-=", "*=", "/=", "%=", "<<<=", "<<=", ">>>=", ">>=", "&=", "^=", "|=",});
-const RDirStructSyms = ([_][]const u8 {"(", "{", "[",});
-const LDirStructSyms = ([_][]const u8 {")", "}", "]",});
-const CDirStructSyms = ([_][]const u8 {";", ",",});
-const StructSyms                    = LDirStructSyms ++ RDirStructSyms ++ CDirStructSyms;
-const KeyWords       = ([_][]const u8 {"if", "while", "do", "var", "const", "mut", "static", "struct", "enum", "union", "break", "continue", "true", "false", "goto", "inline", "return", "switch", "assert", });
-
-const BinaryOperands     = ComparisonOps ++ AssgOps ++ FieldOps ++ ArithOps ++ BitwiseOps ++ BooleanOps;
-const Operands           = BinaryOperands ++ UnaryOps;
-
+const BinaryOperands = ComparisonOps ++ AssgOps ++ FieldOps ++ ArithOps ++ BitwiseOps ++ BooleanOps;
+const Operands = BinaryOperands ++ UnaryOps;
 
 pub fn ExprToTokens(expr: *Str, tokens: *Vec(Token)) !void {
     try ExprToTokensRaw(expr, tokens);
@@ -82,16 +154,15 @@ pub fn ExprToTokens(expr: *Str, tokens: *Vec(Token)) !void {
 }
 
 fn ExprToTokensRaw(expr: *Str, tokens: *Vec(Token)) !void {
-    while (expr.CanPop()) {
-        _ = try expr.CountReadAll(strs.IsWS);
-        if(expr.CanPop()){
+    while (expr.CanPopFront()) {
+        _ = try expr.CountReadAllFront(strs.IsWS);
+        if (expr.CanPopFront()) {
             const tkn = try ReadToken(expr);
             try tokens.append(tkn);
-            if (StrEq(tkn.data, ";")){
+            if (StrEq(tkn.data, ";")) {
                 return;
             }
         }
-        
     } else {
         return error.Expected_Token_Found_EOF;
     }
@@ -110,7 +181,7 @@ fn ExprRefineTokens(tkns: Vec(Token)) void {
             allowCoerce = true;
         }
 
-        if (canCoerce and allowCoerce){
+        if (canCoerce and allowCoerce) {
             tkn.dtype = .un_op;
         }
 
@@ -143,14 +214,9 @@ fn FrontStrEq(lhs: Str, rhs: []const u8) bool {
 fn ReadToken(expr: *Str) !Token {
     errdefer std.log.debug("Error caught on expression point: {}", .{expr.start});
     errdefer ShowErrorAtPoint(expr, expr.start);
-    
-    return ReadKeyword(expr)
-    orelse ReadIdent(expr) 
-    orelse try ReadNum(expr) 
-    orelse ReadOperand(expr)
-    orelse ReadStructural(expr)
-    orelse error.Parse_Failure;
-} 
+
+    return ReadKeyword(expr) orelse ReadIdent(expr) orelse try ReadNum(expr) orelse ReadOperand(expr) orelse ReadStructural(expr) orelse error.Parse_Failure;
+}
 
 fn ReadIdent(expr: *Str) ?Token {
     const copy = expr.*;
@@ -158,13 +224,13 @@ fn ReadIdent(expr: *Str) ?Token {
 
     var tknstr = expr.NewReader();
 
-    const nextchar = tknstr.PeekNext();
-    if (!strs.IsUA(nextchar)){
+    const nextchar = tknstr.PeekFrontNext();
+    if (!strs.IsUA(nextchar)) {
         return null;
     }
-    tknstr.ReadAll(strs.IsUAN);
+    tknstr.ReadAllFront(strs.IsUAN);
     expr.FromEndOf(tknstr);
-    return Token {.data = tknstr, .dtype = .ident, .flags = TokenFlag.Normal};
+    return Token{ .data = tknstr, .dtype = .ident, .flags = TokenFlag.Normal };
 }
 
 fn ReadNum(expr: *Str) !?Token {
@@ -173,14 +239,14 @@ fn ReadNum(expr: *Str) !?Token {
 
     var tknstr = expr.NewReader();
 
-    const nextchar = tknstr.PeekNext();
-    if (!strs.IsN(nextchar)){
+    const nextchar = tknstr.PeekFrontNext();
+    if (!strs.IsN(nextchar)) {
         return null;
         //return error.Not_A_Number;
     }
-    tknstr.ReadAll(strs.IsUN);
+    tknstr.ReadAllFront(strs.IsUN);
     expr.FromEndOf(tknstr);
-    return Token {.data = tknstr, .dtype = .num, .flags = TokenFlag.Normal};
+    return Token{ .data = tknstr, .dtype = .num, .flags = TokenFlag.Normal };
 }
 
 fn ReadOperand(expr: *Str) ?Token {
@@ -188,22 +254,22 @@ fn ReadOperand(expr: *Str) ?Token {
     var foundOp: ?Token = null;
     inline for (BinaryOperands) |op| {
         if (op.len <= caplen) break;
-        if (FrontStrEq(expr.*, op)){
+        if (FrontStrEq(expr.*, op)) {
             caplen = op.len;
             var tknstr = expr.NewReader();
-            tknstr.ReadAmt(op.len);
+            tknstr.ReadEndAmt(op.len);
             expr.FromEndOf(tknstr);
-            foundOp = Token {.data = tknstr, .dtype = .bin_op, .flags = TokenFlag.Normal};
+            foundOp = Token{ .data = tknstr, .dtype = .bin_op, .flags = TokenFlag.Normal };
         }
     }
     inline for (UnaryOps) |op| {
         if (op.len <= caplen) break;
-        if (FrontStrEq(expr.*, op)){
+        if (FrontStrEq(expr.*, op)) {
             caplen = op.len;
             var tknstr = expr.NewReader();
-            tknstr.ReadAmt(op.len);
+            tknstr.ReadEndAmt(op.len);
             expr.FromEndOf(tknstr);
-            foundOp = Token {.data = tknstr, .dtype = .un_op, .flags = TokenFlag.Normal};
+            foundOp = Token{ .data = tknstr, .dtype = .un_op, .flags = TokenFlag.Normal };
         }
     }
     return foundOp;
@@ -214,32 +280,32 @@ fn ReadStructural(expr: *Str) ?Token {
     var foundOp: ?Token = null;
     inline for (LDirStructSyms) |op| {
         if (op.len <= caplen) break;
-        if (FrontStrEq(expr.*, op)){
+        if (FrontStrEq(expr.*, op)) {
             caplen = op.len;
             var tknstr = expr.NewReader();
-            tknstr.ReadAmt(op.len);
+            tknstr.ReadEndAmt(op.len);
             expr.FromEndOf(tknstr);
-            foundOp = Token {.data = tknstr, .dtype = .structural, .flags = TokenFlag.Left};
+            foundOp = Token{ .data = tknstr, .dtype = .structural, .flags = TokenFlag.Left };
         }
     }
     inline for (RDirStructSyms) |op| {
         if (op.len <= caplen) break;
-        if (FrontStrEq(expr.*, op)){
+        if (FrontStrEq(expr.*, op)) {
             caplen = op.len;
             var tknstr = expr.NewReader();
-            tknstr.ReadAmt(op.len);
+            tknstr.ReadEndAmt(op.len);
             expr.FromEndOf(tknstr);
-            foundOp = Token {.data = tknstr, .dtype = .structural, .flags = TokenFlag.Right};
+            foundOp = Token{ .data = tknstr, .dtype = .structural, .flags = TokenFlag.Right };
         }
     }
     inline for (CDirStructSyms) |op| {
         if (op.len <= caplen) break;
-        if (FrontStrEq(expr.*, op)){
+        if (FrontStrEq(expr.*, op)) {
             caplen = op.len;
             var tknstr = expr.NewReader();
-            tknstr.ReadAmt(op.len);
+            tknstr.ReadEndAmt(op.len);
             expr.FromEndOf(tknstr);
-            foundOp = Token {.data = tknstr, .dtype = .structural, .flags = TokenFlag.None};
+            foundOp = Token{ .data = tknstr, .dtype = .structural, .flags = TokenFlag.None };
         }
     }
     return foundOp;
@@ -255,9 +321,9 @@ fn ReadKeyword(expr: *Str) ?Token {
         } else {
             caplen = op.len;
             var tknstr = expr.NewReader();
-            tknstr.ReadAmt(op.len);
+            tknstr.ReadEndAmt(op.len);
             expr.FromEndOf(tknstr);
-            foundOp = Token {.data = tknstr, .dtype = .keyword, .flags = TokenFlag.Normal};
+            foundOp = Token{ .data = tknstr, .dtype = .keyword, .flags = TokenFlag.Normal };
         }
     }
     return foundOp;

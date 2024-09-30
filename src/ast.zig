@@ -102,7 +102,6 @@ const explicitOperands = [_]Operand{
     Operand.new("|=", 10, .RL, .infix),
 };
 
-const ListNode = DLL(AstNode).Node;
 pub const maxprec = b: {
     var maxind: u8 = 0;
     var prevassoc = explicitOperands[0].assoc;
@@ -125,6 +124,7 @@ pub const maxprec = b: {
     break :b maxind;
 };
 
+const ListNode = DLL(AstNode).Node;
 const OpFrame = struct {
     slots: [maxprec+1] Vec(*ListNode),
     opener: AstNode = undefined,
@@ -167,6 +167,7 @@ pub fn ParseExprToAST(expr: *Str, tokenbuffer: *Vec(Token), allocator: std.mem.A
 
 pub fn ResolveOrderOfOps(flatnodes: *DLL(AstNode), OFStack: *Vec(OpFrame)) !void {
     try OFStack.append(OpFrame{.slots = .{Vec(*ListNode).init(OFStack.allocator)} ** (1 + maxprec)});
+    var orderedOps = Vec(*ListNode).init(OFStack.allocator);
     
     var qcurrnode: ?*ListNode = flatnodes.first;
     while (qcurrnode) |currnodeptr| : (qcurrnode = currnodeptr.next){
@@ -201,8 +202,13 @@ pub fn ResolveOrderOfOps(flatnodes: *DLL(AstNode), OFStack: *Vec(OpFrame)) !void
                 _ = 0;
             },
             .structural => {
-                if( tokenizer.StrEq(currnode.data.token.data, ";")){
+                const tknstr = currnode.data.token.data;
+                if( tokenizer.StrEq(tknstr, ";")){
                     continue;
+                } else if (tokenizer.StrEq(tknstr, "(")) {
+
+                } else {
+                    unreachable;
                 }
                 @panic("Unimplemented code path: structurals");
             },
@@ -215,13 +221,25 @@ pub fn ResolveOrderOfOps(flatnodes: *DLL(AstNode), OFStack: *Vec(OpFrame)) !void
     if(OFStack.items.len > 1) {
         OFStack.items[1].opener.Error("Unclosed frame\n", .{});
     }
-
-    if(0 == @intFromPtr(@as(*allowzero u64 , @ptrFromInt(@as(u64, 0))))){ @panic("Didnt expect to get this far"); }
+    
     const CFrame = OFStack.items[0];
     for (0..maxprec + 1 ) |prec| {
-        var qopptr = CFrame.slots[prec].first;
-        while (qopptr) |opptr| : (qopptr = opptr.next){
-            
-        }
+        const cprec = CFrame.slots[prec];
+        if (cprec.items.len == 0) continue;
+        const dir: Operand.Associativity = cprec.items[0].data.qOp.?.assoc;
+        if (dir == .LR){
+            var idx: usize = 0;
+            while (idx < orderedOps.items.len) : (idx += 1){
+                try orderedOps.append(cprec.items[idx]);
+            }
+        } else if (dir == .RL) {
+            var idx: usize = orderedOps.items.len;
+            while (idx > 0){
+                idx -= 1;
+                try orderedOps.append(cprec.items[idx]);
+            }
+        } else unreachable;
     }
+
+    if(0 == @intFromPtr(@as(*allowzero u64 , @ptrFromInt(@as(u64, 0))))){ @panic("Didnt expect to get this far"); }
 }
