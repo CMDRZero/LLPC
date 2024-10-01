@@ -57,11 +57,11 @@ pub const Str = struct {
         return self.backer[self.start];
     }
 
-    pub fn PeekEnd(self: Str) u8 {
+    pub fn PeekEndNext(self: Str) u8 {
         if (self.end >= self.backer.len) {
             return '\x00';
         }
-        return self.backer[self.end - 1];
+        return self.backer[self.end];
     }
 
     pub fn PopFront(self: *Str) !void {
@@ -82,7 +82,7 @@ pub const Str = struct {
         self.start += amt;
     }
 
-    pub fn PeekFrontNext(self: *Str) u8 {
+    pub fn PeekFrontNext(self: *Str) !u8 {
         if ((self.start + 1) >= self.end) {
             return error.PeekEmptyStr;
         }
@@ -92,7 +92,7 @@ pub const Str = struct {
         return self.backer[self.end];
     }
 
-    pub fn IndexStart(self: Str, idx: u32) u8 {
+    pub fn IndexStart(self: Str, idx: u32) !u8 {
         if (self.start + idx >= self.end) {
             return error.IndexOutOfBounds;
         }
@@ -118,17 +118,17 @@ pub const Str = struct {
         self.end -= 1;
     }
 
-    pub fn CountReadAllFront(self: *Str, validator: fn (u8) bool) !u32 {
+    pub fn CountReadAllEnd(self: *Str, validator: fn (u8) bool) !u32 {
         var amt: u32 = 0;
-        while (validator(try self.PeekFront())) {
+        while (validator(try self.PeekEndNext())) {
             amt += 1;
-            try self.PopFront();
+            try self.PopEnd();
         }
         return amt;
     }
 
-    pub fn ReadAllFront(self: *Str, validator: fn (u8) bool) void {
-        while (validator(self.PeekFrontNext())) {
+    pub fn ReadAllEnd(self: *Str, validator: fn (u8) bool) void {
+        while (validator(self.PeekEndNext())) {
             self.ReadEnd();
         }
     }
