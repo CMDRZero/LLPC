@@ -77,11 +77,16 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !void {
 
 }
 
-fn ReadToken(expr: *Str) !Token {
-    errdefer std.log.debug("Error caught on expression point: {}", .{expr.start});
-    errdefer ShowErrorAtPoint(expr, expr.start);
+fn ReadToken(expr: *Str, perferUnary: bool) !Token {
+    if (!@import("builtin").is_test){
+        errdefer std.log.debug("Error caught on expression point: {}", .{expr.start});
+        errdefer ShowErrorAtPoint(expr, expr.start);
+    }
 
-    return ReadKeyword(expr)  
+    return try ReadOperand(expr, perferUnary)
+    orelse try ReadKeyword(expr)  
+    orelse try ReadIdent(expr)
+    orelse try ReadNum(expr)
     orelse error.Parse_Failure;
 }
 
@@ -138,7 +143,35 @@ fn ReadNum(expr: *Str) !?Token {
     return Token{.textref = tknstr, .ttype = ._number};
 }
 
+fn ReadOperand(expr: *Str, perferUnary: bool) !?Token {
+    const copy = expr.*;
+    errdefer expr.* = copy;
+
+    var caplen: u32 = 0;
+    var capUnary = false;
+    var foundOp: ?TokenType = null;
+    inline for (Tkns.OpSyms) |pair| {
+        const sym = pair.sym;
+        const ttype = pair.tkn;
+        const isUnary = @intFromEnum(ttype) & Tkns.M_OPTYPE == Tkns.OT_UNARY;
+        const pref = perferUnary and isUnary and !capUnary or !perferUnary and !isUnary and capUnary;
+        if ((sym.len > caplen or pref and sym.len == caplen) and try StrStartsWith(expr.*, sym)){
+            caplen = sym.len;
+            foundOp = ttype;
+            capUnary = isUnary;
+        }
+    }
+    if (foundOp) |tknid| {
+        var tknstr = expr.NewReader();
+        tknstr.ReadEndAmt(caplen);
+        expr.FromEndOf(tknstr);
+        return Token{.textref = tknstr, .ttype = tknid};
+    }
+    return null;
+}
+
 fn StrStartsWith(lhs: Str, rhs: []const u8) !bool {
+    if (rhs.len > (lhs.end - lhs.start)) return false;
     for (rhs, 0..) |char, ind| {
         if (try lhs.IndexStart(@intCast(ind)) != char) return false;
     }
@@ -228,4 +261,84 @@ test "Numbers" {
     file = Str.FromSlice("0a");
     errtoken = ReadNum(&file);
     try expectErr(error.Not_A_Number, errtoken);
+}
+
+test "Operands" {
+    const expect = std.testing.expect;
+
+    var file: Str = Str.FromSlice("");
+    var token: ?Token = null;
+
+    file = Str.FromSlice("*");
+    token = try ReadOperand(&file, false);
+    try expect(token != null and token.?.ttype == ._mul);
+    
+    file = Str.FromSlice("+");
+    token = try ReadOperand(&file, false);
+    try expect(token != null and token.?.ttype == ._add);
+
+    file = Str.FromSlice("+");
+    token = try ReadOperand(&file, true);
+    try expect(token != null and token.?.ttype == ._pos);
+
+    file = Str.FromSlice("<<=");
+    token = try ReadOperand(&file, true);
+    try expect(token != null and token.?.ttype == ._bsl_assg);
+
+    file = Str.FromSlice("or");
+    token = try ReadOperand(&file, true);
+    try expect(token != null and token.?.ttype == ._kw_or);
+
+    file = Str.FromSlice("if");
+    token = try ReadOperand(&file, true);
+    try expect(token == null);
+
+    file = Str.FromSlice("012");
+    token = try ReadOperand(&file, true);
+    try expect(token == null);
+
+    file = Str.FromSlice("@");
+    token = try ReadOperand(&file, true);
+    try expect(token == null);
+}
+
+test "General" {
+    const expect = std.testing.expect;
+    const expectErr = std.testing.expectError;
+
+    var file: Str = Str.FromSlice("");
+    var token: Token = undefined;
+    var errtoken: anyerror!Token = undefined;
+
+    file = Str.FromSlice("abc");
+    token = try ReadToken(&file, false);
+    try expect(token.ttype == ._ident);
+
+    file = Str.FromSlice("0_a");
+    errtoken = ReadToken(&file, false);
+    try expectErr(error.Not_A_Number, errtoken);
+
+    file = Str.FromSlice("012");
+    token = try ReadToken(&file, false);
+    try expect(token.ttype == ._number);
+
+    file = Str.FromSlice("if");
+    token = try ReadToken(&file, false);
+    try expect(token.ttype == ._if);
+
+    file = Str.FromSlice("x");
+    token = try ReadToken(&file, false);
+    try expect(token.ttype == ._ident);
+
+    file = Str.FromSlice("or");
+    token = try ReadToken(&file, false);
+    try expect(token.ttype == ._kw_or);
+
+    file = Str.FromSlice("*");
+    token = try ReadToken(&file, false);
+    try expect(token.ttype == ._mul);
+
+    file = Str.FromSlice("-");
+    token = try ReadToken(&file, true);
+    try expect(token.ttype == ._neg);
 }

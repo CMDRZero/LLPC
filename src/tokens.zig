@@ -198,3 +198,50 @@ fn Precidence(val: comptime_int) u64 {
     if (val >= NUMPRECS) @compileError( std.fmt.comptimePrint("Precidence greater than maximum declared precidence ({})", .{NUMPRECS}));
     return val << OPPRECPOS;
 }
+
+const OpSymPair = struct {
+    sym: [] const u8,
+    tkn: TokenType,
+};
+
+pub const OpSyms = [_] OpSymPair {
+    OpSymPair{.sym = ".", .tkn = ._dot},
+    OpSymPair{.sym = "+", .tkn = ._pos},
+    OpSymPair{.sym = "-", .tkn = ._neg},
+    OpSymPair{.sym = "!", .tkn = ._not},
+    OpSymPair{.sym = "~", .tkn = ._tilde},
+    OpSymPair{.sym = "*", .tkn = ._mul},
+    OpSymPair{.sym = "/", .tkn = ._div},
+    OpSymPair{.sym = "%", .tkn = ._mod},
+    OpSymPair{.sym = "<<", .tkn = ._bsl},
+    OpSymPair{.sym = ">>", .tkn = ._bsr},
+    OpSymPair{.sym = "<<<", .tkn = ._brl},
+    OpSymPair{.sym = ">>>", .tkn = ._brr},
+    OpSymPair{.sym = "+", .tkn = ._add},
+    OpSymPair{.sym = "-", .tkn = ._sub},
+    OpSymPair{.sym = "&", .tkn = ._and},
+    OpSymPair{.sym = "^", .tkn = ._xor},
+    OpSymPair{.sym = "|", .tkn = ._or},
+    OpSymPair{.sym = "<", .tkn = ._lt},
+    OpSymPair{.sym = "<=", .tkn = ._le},
+    OpSymPair{.sym = ">", .tkn = ._gt},
+    OpSymPair{.sym = ">=", .tkn = ._ge},
+    OpSymPair{.sym = "==", .tkn = ._eq},
+    OpSymPair{.sym = "!=", .tkn = ._ne},
+    OpSymPair{.sym = "and", .tkn = ._kw_and},
+    OpSymPair{.sym = "or", .tkn = ._kw_or},
+    OpSymPair{.sym = "=", .tkn = ._assg},
+    OpSymPair{.sym = ":=", .tkn = ._def_assg},
+    OpSymPair{.sym = "+=", .tkn = ._add_assg},
+    OpSymPair{.sym = "-=", .tkn = ._sub_assg},
+    OpSymPair{.sym = "*=", .tkn = ._mul_assg},
+    OpSymPair{.sym = "/=", .tkn = ._div_assg},
+    OpSymPair{.sym = "%=", .tkn = ._mod_assg},
+    OpSymPair{.sym = "<<=", .tkn = ._bsl_assg},
+    OpSymPair{.sym = ">>=", .tkn = ._bsr_assg},
+    OpSymPair{.sym = "<<<=", .tkn = ._brl_assg},
+    OpSymPair{.sym = ">>>=", .tkn = ._brr_assg},
+    OpSymPair{.sym = "&=", .tkn = ._and_assg},
+    OpSymPair{.sym = "^=", .tkn = ._xor_assg},
+    OpSymPair{.sym = "|=", .tkn = ._or_assg},
+};
