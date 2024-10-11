@@ -608,9 +608,20 @@ test "Multitokens" {
     file = Str.FromSlice("1 + 2");
     errtokens = ExprToTokens(alloc, &file);
 
-    expect(tokens.items.len == 3) catch |err| {
-        std.log.warn("Real length was: {}\n", .{tokens.items.len});
-        return err;
-    };
     try expectErr(error.Parse_Failure, errtokens);
+    
+    
+
+
+    file = Str.FromSlice("1 + 2_a");
+    errtokens = ExprToTokens(alloc, &file);
+
+    try expectErr(error.Not_A_Number, errtokens);
+
+
+
+    file = Str.FromSlice("1 + 2 * (");
+    errtokens = ExprToTokens(alloc, &file);
+
+    try expectErr(error.Unpaired, errtokens);
 }
