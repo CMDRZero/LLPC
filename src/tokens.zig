@@ -245,3 +245,15 @@ pub const OpSyms = [_] OpSymPair {
     OpSymPair{.sym = "^=", .tkn = ._xor_assg},
     OpSymPair{.sym = "|=", .tkn = ._or_assg},
 };
+
+pub const StructSyms = [_] OpSymPair {
+    OpSymPair{.sym = "(", .tkn = ._left_paren},
+    OpSymPair{.sym = ")", .tkn = ._right_paren},
+    OpSymPair{.sym = "[", .tkn = ._left_bracket},
+    OpSymPair{.sym = "]", .tkn = ._right_bracket},
+    OpSymPair{.sym = "{", .tkn = ._left_curly},
+    OpSymPair{.sym = "}", .tkn = ._right_curly},
+    OpSymPair{.sym = ",", .tkn = ._comma},
+    OpSymPair{.sym = ";", .tkn = ._semicolon},
+    
+};

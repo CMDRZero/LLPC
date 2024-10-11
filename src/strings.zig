@@ -132,6 +132,12 @@ pub const Str = struct {
             self.ReadEnd();
         }
     }
+
+    pub fn PopAllFront(self: *Str, validator: fn (u8) bool) void {
+        while (validator(self.PeekFront() catch '\x00')) {
+            self.PopFront() catch unreachable;
+        }
+    }
 };
 
 pub fn IsWS(char: u8) bool {

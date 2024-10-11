@@ -14,66 +14,112 @@ pub const Token = struct {
     ttype: TokenType,
 };
 
-///Will greedily consume tokens until it reaches a left facing unbound structural parenthesis or curly brace, or a semi-colon. The semi-colon will be consumed
+///Will greedily consume tokens until it reaches a left facing unbound structural parenthesis, or a semi-colon. The semi-colon will be consumed
 /// While the others will not. Will insert null-width tokens as is applicable for expressions.
-pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !void {
-    var canCast = false;
+pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
+    var canCast = true;
     var maybeCast = false;
     var callable = false;
+    var unaryCoerce = true;
+
+    const parentype = enum {
+        NA,
+        Call,
+        Cast,
+    };
 
     var tkns = Vec(Token).init(alloc);
+    errdefer tkns.deinit();
     var pairs = Vec(Token).init(alloc); 
+    var parentypes = Vec(parentype).init(alloc);
+    defer pairs.deinit();
+    defer parentypes.deinit();
 
-    while (true) {
-        const nToken = try ReadToken(expr);
+    expr.PopAllFront(strs.IsWS);
+
+    const ret = loop: while (true) {
+        const nToken = ReadToken(expr, unaryCoerce) catch |err| {
+            if (!@import("builtin").is_test){
+                expr.Error("Tokenization failed here\n", .{});
+            }
+            break: loop err;
+        };
+        expr.PopAllFront(strs.IsWS);
         const ntype = nToken.ttype;
-        
+        const ntypei = @intFromEnum(ntype);
+        unaryCoerce = ntypei & Tkns.CAPRIGHT != 0 or ntypei & Tkns.M_OPERAND == Tkns.OPERAND;
+
         //<callable>() -> function call
         if (callable and ntype == ._left_paren){
-            tkns.append( Token{
+            try tkns.append( Token{
                 .textref = nToken.textref.NewReader(), 
                 .ttype = ._funccall} );
         }
         //<cast?> indent  ||  <cast?> (stuff) -> typecast
         else if (maybeCast and (ntype == ._left_paren or ntype == ._ident)){
-            tkns.append( Token{
+            try tkns.append( Token{
                 .textref = nToken.textref.NewReader(), 
                 .ttype = ._typecast} );
-            maybeCast = false;
         }
-        else if (canCast and ntype == ._right_paren) {
-            maybeCast = true;
-            canCast = false;
-        }
-
         else if (ntype == ._left_bracket){
-            tkns.append( Token{
+            try tkns.append( Token{
                 .textref = nToken.textref.NewReader(), 
                 .ttype = ._arrayindx} );
         }
 
-        if (ntype & Tkns.M_OPERAND == Tkns.OPERAND){
+        if (ntypei & Tkns.M_OPERAND == Tkns.OPERAND){
             callable = false;
             canCast = true;
         }
-        else if (ntype & Tkns.M_IDENT == Tkns.IDENT){
+        else if (ntypei & Tkns.M_IDENT == Tkns.IDENT){
             callable = true;
             canCast = false;
         }
 
+        maybeCast = false;
         //Opening pairs
-        if (ntype & Tkns.M_STRUCTURALS == Tkns.STRUCTURAL and ntype & Tkns.CAPRIGHT and !(ntype & Tkns.CAPLEFT)){
-            pairs.append(nToken);
-        //Closing pairs
-        } else if (ntype & Tkns.M_STRUCTURALS == Tkns.STRUCTURAL and ntype & Tkns.CAPRIGHT and !(ntype & Tkns.CAPLEFT)){
-            const expect: u64 = @enumFromInt(@intFromEnum(ntype) ^ Tkns.CAPRIGHT ^ Tkns.CAPLEFT);
-            const pToken = pairs.pop();
-            if (pToken.ttype != expect){
-                nToken.textref.Error("Unexpected token `{s}` does not match pairing symbol: `{s}`", .{nToken.textref, pToken.textref});
+        if (ntypei & Tkns.M_STRUCTURALS == Tkns.STRUCTURAL and ntypei & Tkns.CAPRIGHT != 0 and ntypei & Tkns.CAPLEFT == 0){
+            try pairs.append(nToken);
+            if (ntype == ._left_paren){
+                try parentypes.append(if (canCast) .Cast else .Call);
+            } else {
+                try parentypes.append(.NA);
             }
-        }
+        //Closing pairs
+        } else if (ntypei & Tkns.M_STRUCTURALS == Tkns.STRUCTURAL and ntypei & Tkns.CAPRIGHT == 0 and ntypei & Tkns.CAPLEFT != 0){
+            const expect: u64 = ntypei ^ Tkns.CAPRIGHT ^ Tkns.CAPLEFT;
+            if (pairs.items.len == 0 and ntype == ._right_paren){
+                break: loop tkns;
+            }
+            const pToken = pairs.pop();
+            if (@intFromEnum(pToken.ttype) != expect){
+                if (!@import("builtin").is_test){
+                    nToken.textref.Error("Unexpected token `{s}` does not match pairing symbol: `{s}`", .{nToken.textref, pToken.textref});
+                }
+            }
+            const ptype = parentypes.pop();
+            if (ptype == .Call){
+                callable = true;
+            } else if (ptype == .Cast){
+                //std.log.warn("Unpacked cast", .{});
+                maybeCast = true;
+            }
+        } 
 
+        try tkns.append(nToken);
+        if (ntype == ._semicolon){
+            break: loop tkns;
+        }
+    };
+
+    if (pairs.items.len != 0){
+        if (!@import("builtin").is_test){
+            pairs.items[pairs.items.len - 1].textref.Error("Unpaired\n", .{});
+        }
+        return error.Unpaired;
     }
+
+    return ret;
 
 }
 
@@ -87,6 +133,7 @@ fn ReadToken(expr: *Str, perferUnary: bool) !Token {
     orelse try ReadKeyword(expr)  
     orelse try ReadIdent(expr)
     orelse try ReadNum(expr)
+    orelse try ReadStructural(expr)
     orelse error.Parse_Failure;
 }
 
@@ -159,6 +206,29 @@ fn ReadOperand(expr: *Str, perferUnary: bool) !?Token {
             caplen = sym.len;
             foundOp = ttype;
             capUnary = isUnary;
+        }
+    }
+    if (foundOp) |tknid| {
+        var tknstr = expr.NewReader();
+        tknstr.ReadEndAmt(caplen);
+        expr.FromEndOf(tknstr);
+        return Token{.textref = tknstr, .ttype = tknid};
+    }
+    return null;
+}
+
+fn ReadStructural(expr: *Str) !?Token {
+    const copy = expr.*;
+    errdefer expr.* = copy;
+
+    var caplen: u32 = 0;
+    var foundOp: ?TokenType = null;
+    inline for (Tkns.StructSyms) |pair| {
+        const sym = pair.sym;
+        const ttype = pair.tkn;
+        if (sym.len > caplen and try StrStartsWith(expr.*, sym)){
+            caplen = sym.len;
+            foundOp = ttype;
         }
     }
     if (foundOp) |tknid| {
@@ -302,6 +372,26 @@ test "Operands" {
     try expect(token == null);
 }
 
+test "Structurals" {
+    const expect = std.testing.expect;
+
+    var file: Str = Str.FromSlice("");
+    var token: ?Token = null;
+
+    file = Str.FromSlice("(");
+    token = try ReadStructural(&file);
+    try expect(token != null and token.?.ttype == ._left_paren);
+    
+    file = Str.FromSlice("]");
+    token = try ReadStructural(&file);
+    try expect(token != null and token.?.ttype == ._right_bracket);
+
+    
+    file = Str.FromSlice(";");
+    token = try ReadStructural(&file);
+    try expect(token != null and token.?.ttype == ._semicolon);
+}
+
 test "General" {
     const expect = std.testing.expect;
     const expectErr = std.testing.expectError;
@@ -341,4 +431,186 @@ test "General" {
     file = Str.FromSlice("-");
     token = try ReadToken(&file, true);
     try expect(token.ttype == ._neg);
+
+    file = Str.FromSlice("(");
+    token = try ReadToken(&file, true);
+    try expect(token.ttype == ._left_paren);
+
+    file = Str.FromSlice(";");
+    token = try ReadToken(&file, true);
+    try expect(token.ttype == ._semicolon);
+}
+
+test "Multitokens" {
+    const expect = std.testing.expect;
+    const expectErr = std.testing.expectError;
+
+    var file: Str = Str.FromSlice("");
+    const alloc = std.testing.allocator;
+    var tokens: Vec(Token) = undefined;
+    var errtokens: anyerror!Vec(Token) = undefined;
+
+    file = Str.FromSlice("x + y;");
+    tokens = try ExprToTokens(alloc, &file);
+    errdefer {
+        for (0.., tokens.items) |i, item| {
+            std.log.warn("Token_{} is of type: {s}", .{i, @tagName(item.ttype)});
+        }
+    }
+
+
+    expect(tokens.items.len == 4) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+    try expect(tokens.items[0].ttype == ._ident);
+    try expect(tokens.items[1].ttype == ._add);
+    try expect(tokens.items[2].ttype == ._ident);
+    try expect(tokens.items[3].ttype == ._semicolon);
+    tokens.deinit();
+
+
+    file = Str.FromSlice("-x -- y (-z)-w;");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 13) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+    try expect(tokens.items[0].ttype == ._neg);
+    try expect(tokens.items[1].ttype == ._ident);
+    try expect(tokens.items[2].ttype == ._sub);
+    try expect(tokens.items[3].ttype == ._neg);
+    try expect(tokens.items[4].ttype == ._ident);
+    try expect(tokens.items[5].ttype == ._funccall);
+    try expect(tokens.items[6].ttype == ._left_paren);
+    try expect(tokens.items[7].ttype == ._neg);
+    try expect(tokens.items[8].ttype == ._ident);
+    try expect(tokens.items[9].ttype == ._right_paren);
+    try expect(tokens.items[10].ttype == ._sub);
+    try expect(tokens.items[11].ttype == ._ident);
+    try expect(tokens.items[12].ttype == ._semicolon);
+    tokens.deinit();
+
+
+    file = Str.FromSlice("(int)f(x, y);");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 12) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._left_paren);
+    try expect(tokens.items[1].ttype == ._ident);
+    try expect(tokens.items[2].ttype == ._right_paren);
+    try expect(tokens.items[3].ttype == ._typecast);
+    try expect(tokens.items[4].ttype == ._ident);
+    try expect(tokens.items[5].ttype == ._funccall);
+    try expect(tokens.items[6].ttype == ._left_paren);
+    try expect(tokens.items[7].ttype == ._ident);
+    try expect(tokens.items[8].ttype == ._comma);
+    try expect(tokens.items[9].ttype == ._ident);
+    try expect(tokens.items[10].ttype == ._right_paren);
+    try expect(tokens.items[11].ttype == ._semicolon);
+    tokens.deinit();
+
+
+
+    file = Str.FromSlice("x ~ y;");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 4) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._ident);
+    try expect(tokens.items[1].ttype == ._tilde);
+    try expect(tokens.items[2].ttype == ._ident);
+    try expect(tokens.items[3].ttype == ._semicolon);
+    tokens.deinit();
+
+    
+
+    file = Str.FromSlice("(int)ary[idx](x);");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 14) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._left_paren);
+    try expect(tokens.items[1].ttype == ._ident);
+    try expect(tokens.items[2].ttype == ._right_paren);
+    try expect(tokens.items[3].ttype == ._typecast);
+    try expect(tokens.items[4].ttype == ._ident);
+    try expect(tokens.items[5].ttype == ._arrayindx);
+    try expect(tokens.items[6].ttype == ._left_bracket);
+    try expect(tokens.items[7].ttype == ._ident);
+    try expect(tokens.items[8].ttype == ._right_bracket);
+    try expect(tokens.items[9].ttype == ._funccall);
+    try expect(tokens.items[10].ttype == ._left_paren);
+    try expect(tokens.items[11].ttype == ._ident);
+    try expect(tokens.items[12].ttype == ._right_paren);
+    try expect(tokens.items[13].ttype == ._semicolon);
+    tokens.deinit();
+
+    
+    
+
+    file = Str.FromSlice("+(a)a + (a) + a(a);");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 17) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._pos);
+    try expect(tokens.items[1].ttype == ._left_paren);
+    try expect(tokens.items[2].ttype == ._ident);
+    try expect(tokens.items[3].ttype == ._right_paren);
+    try expect(tokens.items[4].ttype == ._typecast);
+    try expect(tokens.items[5].ttype == ._ident);
+    try expect(tokens.items[6].ttype == ._add);
+    try expect(tokens.items[7].ttype == ._left_paren);
+    try expect(tokens.items[8].ttype == ._ident);
+    try expect(tokens.items[9].ttype == ._right_paren);
+    try expect(tokens.items[10].ttype == ._add);
+    try expect(tokens.items[11].ttype == ._ident);
+    try expect(tokens.items[12].ttype == ._funccall);
+    try expect(tokens.items[13].ttype == ._left_paren);
+    try expect(tokens.items[14].ttype == ._ident);
+    try expect(tokens.items[15].ttype == ._right_paren);
+    try expect(tokens.items[16].ttype == ._semicolon);
+    tokens.deinit();
+
+
+
+    file = Str.FromSlice("x and y)");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 3) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._ident);
+    try expect(tokens.items[1].ttype == ._kw_and);
+    try expect(tokens.items[2].ttype == ._ident);
+    tokens.deinit();
+
+    
+
+
+    file = Str.FromSlice("1 + 2");
+    errtokens = ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 3) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+    try expectErr(error.Parse_Failure, errtokens);
 }
