@@ -205,6 +205,7 @@ const OpSymPair = struct {
 };
 
 pub const OpSyms = [_] OpSymPair {
+    OpSymPair{.sym = ":", .tkn = ._colon},
     OpSymPair{.sym = ".", .tkn = ._dot},
     OpSymPair{.sym = "+", .tkn = ._pos},
     OpSymPair{.sym = "-", .tkn = ._neg},

@@ -101,7 +101,6 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
             if (ptype == .Call){
                 callable = true;
             } else if (ptype == .Cast){
-                //std.log.warn("Unpacked cast", .{});
                 maybeCast = true;
             }
         } 
@@ -624,4 +623,42 @@ test "Multitokens" {
     errtokens = ExprToTokens(alloc, &file);
 
     try expectErr(error.Unpaired, errtokens);
+
+    
+
+
+    file = Str.FromSlice("assert sum == 4;");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 5) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._assert);
+    try expect(tokens.items[1].ttype == ._ident);
+    try expect(tokens.items[2].ttype == ._eq);
+    try expect(tokens.items[3].ttype == ._number);
+    try expect(tokens.items[4].ttype == ._semicolon);
+    tokens.deinit();
+
+
+
+    file = Str.FromSlice("std:println(msg);");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 8) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._ident);
+    try expect(tokens.items[1].ttype == ._colon);
+    try expect(tokens.items[2].ttype == ._ident);
+    try expect(tokens.items[3].ttype == ._funccall);
+    try expect(tokens.items[4].ttype == ._left_paren);
+    try expect(tokens.items[5].ttype == ._ident);
+    try expect(tokens.items[6].ttype == ._right_paren);
+    try expect(tokens.items[7].ttype == ._semicolon);
+    tokens.deinit();
 }
