@@ -191,6 +191,34 @@ pub const TokenType = enum (u64) {
     _comma          = STRUCTURAL + CAPLEFT  + CAPRIGHT  + ID_COMMA,    
     _semicolon      = STRUCTURAL + CAPLEFT  + CAPRIGHT  + ID_SEMICOLON,
     
+    pub inline fn Int(self: @This()) u64 {
+        return @intFromEnum(self);
+    }
+
+    pub inline fn IsOperand(self: @This()) bool {
+        return self.Int() & M_OPERAND == OPERAND;
+    }
+    pub inline fn IsIdent(self: @This()) bool {
+        return self.Int() & M_IDENT == IDENT;
+    }
+    pub inline fn IsStructural(self: @This()) bool {
+        return self.Int() & M_STRUCTURALS == STRUCTURAL;
+    }
+    pub inline fn IsKWord(self: @This()) bool {
+        return self.Int() & M_KWORD == KWORD;
+    }
+    pub inline fn CanCapRight(self: @This()) bool {
+        return self.Int() & CAPRIGHT != 0;
+    }
+    pub inline fn CanCapLeft(self: @This()) bool {
+        return self.Int() & CAPLEFT != 0;
+    }
+
+    pub inline fn GetOpType(self: @This()) u64 {
+        return self.Int() & M_OPTYPE;
+    }
+    
+
 };
 
 fn Precidence(val: comptime_int) u64 {

@@ -1,4 +1,5 @@
 const std = @import("std");
+const IsTesting = @import("builtin").is_test;
 
 pub const Str = struct {
     start: u32, //Inclusive
@@ -10,6 +11,7 @@ pub const Str = struct {
     }
 
     pub fn Error(self: Str, comptime fmt: []const u8, args: anytype) void {
+        if (IsTesting) return;
         if (self.start > self.end) {
             @panic("Str has start after end");
         }

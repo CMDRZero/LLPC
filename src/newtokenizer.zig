@@ -39,15 +39,12 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
 
     const ret = loop: while (true) {
         const nToken = ReadToken(expr, unaryCoerce) catch |err| {
-            if (!@import("builtin").is_test){
-                expr.Error("Tokenization failed here\n", .{});
-            }
+            expr.Error("Tokenization failed here\n", .{});
             break: loop err;
         };
         expr.PopAllFront(strs.IsWS);
         const ntype = nToken.ttype;
-        const ntypei = @intFromEnum(ntype);
-        unaryCoerce = ntypei & Tkns.CAPRIGHT != 0 or ntypei & Tkns.M_OPERAND == Tkns.OPERAND;
+        unaryCoerce = ntype.CanCapRight() or ntype.IsOperand();
 
         //<callable>() -> function call
         if (callable and ntype == ._left_paren){
@@ -67,36 +64,42 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
                 .ttype = ._arrayindx} );
         }
 
-        if (ntypei & Tkns.M_OPERAND == Tkns.OPERAND){
+        if (ntype.IsOperand()){
             callable = false;
             canCast = true;
         }
-        else if (ntypei & Tkns.M_IDENT == Tkns.IDENT){
+        else if (ntype.IsIdent()){
             callable = true;
             canCast = false;
         }
 
         maybeCast = false;
+        
         //Opening pairs
-        if (ntypei & Tkns.M_STRUCTURALS == Tkns.STRUCTURAL and ntypei & Tkns.CAPRIGHT != 0 and ntypei & Tkns.CAPLEFT == 0){
+        if (ntype.IsStructural() and ntype.CanCapRight() and !ntype.CanCapLeft()){
             try pairs.append(nToken);
             if (ntype == ._left_paren){
                 try parentypes.append(if (canCast) .Cast else .Call);
             } else {
                 try parentypes.append(.NA);
             }
+        
         //Closing pairs
-        } else if (ntypei & Tkns.M_STRUCTURALS == Tkns.STRUCTURAL and ntypei & Tkns.CAPRIGHT == 0 and ntypei & Tkns.CAPLEFT != 0){
-            const expect: u64 = ntypei ^ Tkns.CAPRIGHT ^ Tkns.CAPLEFT;
-            if (pairs.items.len == 0 and ntype == ._right_paren){
-                break: loop tkns;
+        } else if (ntype.IsStructural() and !ntype.CanCapRight() and ntype.CanCapLeft()){
+            const expect: u64 = ntype.Int() ^ Tkns.CAPRIGHT ^ Tkns.CAPLEFT;
+            if (pairs.items.len == 0 and ntype == ._right_paren) break: loop tkns; //If there is an unmatched right parenthesis, this will terminate an expression.
+            
+            if (pairs.items.len == 0){
+                nToken.textref.Error("Unexpected token `{s}` is unpaired", .{nToken.textref});
+                return error.Mismatched_Symbol;
             }
+            
             const pToken = pairs.pop();
-            if (@intFromEnum(pToken.ttype) != expect){
-                if (!@import("builtin").is_test){
-                    nToken.textref.Error("Unexpected token `{s}` does not match pairing symbol: `{s}`", .{nToken.textref, pToken.textref});
-                }
+            if (pToken.ttype.Int() != expect) {
+                nToken.textref.Error("Unexpected token `{s}` does not match pairing symbol: `{s}`", .{nToken.textref, pToken.textref});
+                return error.Mismatched_Symbol;
             }
+            
             const ptype = parentypes.pop();
             if (ptype == .Call){
                 callable = true;
@@ -438,6 +441,7 @@ test "General" {
     file = Str.FromSlice(";");
     token = try ReadToken(&file, true);
     try expect(token.ttype == ._semicolon);
+    
 }
 
 test "Multitokens" {
