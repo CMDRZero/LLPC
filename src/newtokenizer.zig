@@ -125,7 +125,7 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
 
 }
 
-fn ReadToken(expr: *Str, perferUnary: bool) !Token {
+pub fn ReadToken(expr: *Str, perferUnary: bool) !Token {
     if (!@import("builtin").is_test){
         errdefer std.log.debug("Error caught on expression point: {}", .{expr.start});
         errdefer ShowErrorAtPoint(expr, expr.start);

@@ -34,7 +34,11 @@ pub const Str = struct {
     }
 
     pub fn format(self: Str, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        return writer.print("Str{{ {}-{}: \"{s}\" }}", .{ self.start, self.end, self.backer[self.start..self.end] });
+        return writer.print("Str{{ {}-{}: \"{s}\" }}", .{ self.start, self.end, self.ToSlice() });
+    }
+
+    pub fn ToSlice(self: Str) [] const u8 {
+        return self.backer[self.start..self.end];
     }
 
     pub fn Copy(self: *Str) Str {
