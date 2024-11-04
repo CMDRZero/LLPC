@@ -66,7 +66,14 @@ const Var = struct {
 
 const Arg = struct {
     ivar: Var,
-    AquisType: enum {aqConst, aqCopy, aqMut},
+    aquisType: AquisType,
+
+    const AquisType = enum {aqConst, aqCopy, aqMut};
+};
+
+const ArgType = struct {
+    dtype: Dtype,
+    aquisType: Arg.AquisType,
 };
 
 const Program = struct {
@@ -151,7 +158,7 @@ pub fn ParseFunction(alloc: std.mem.Allocator, file: *Str) !?TLDecl.Func {
     if (!file.CanPopFront()) return null; //If EOF, return null to signal a safe failure to parse
 
     const ret = try ParseTupleType(alloc, file);
-    const name = try ParseIdent(allocs, file);
+    const name = try ParseIdent(file);
     try ExpectToken(file, ._left_paren);
     var argsvec = Vec(Arg).init(alloc);
     while (try ParseArg(alloc, file)) |arg| argsvec.append(arg);
@@ -173,6 +180,172 @@ fn ParseTupleType(alloc: std.mem.Allocator, file: *Str) ![]Dtype {
         try dtypes.append(try ParseType(alloc, file));
     }
     return dtypes.toOwnedSlice();
+}
+
+const ParseType = @compileError("Unimplemented");
+const ParseArg = @compileError("Unimplemented");
+const ParseExprSegment = @compileError("Unimplemented");
+const ArgsToVars = @compileError("Unimplemented");
+
+fn ParseIdent(file: *Str) ![]u8 {
+    const tkn = try Tknz.ReadToken(file, false);
+    return tkn.textref.ToSlice();
+}
+
+fn ParseArgType(alloc: std.mem.Allocator, file: *Str) !ArgType {
+    var aquisitionType: Arg.AquisType = undefined;
+    var tkns = Vec(Token).init(alloc);
+    while (true) {
+        if (try QueryToken(file, ._comma)) break;
+        try tkns.append(try Tknz.ReadToken(file, false));
+        file.PopAllFront(strs.IsWS);
+    }
+    const aquiTkn = tkns.items[tkns.items.len - 1];
+    if (aquiTkn.ttype == ._const){
+        aquisitionType = .aqConst;
+    } else if (aquiTkn.ttype == ._copy){
+        aquisitionType = .aqCopy;
+    } else if (aquiTkn.ttype == ._mut){
+        aquisitionType = .aqMut;
+    } else {
+        return error.Invalid_Aquisition_Type;
+    }
+    tkns.shrinkRetainingCapacity(tkns.items.len - 1);
+
+    var innerType: Dtype = try InnerParseType(tkns);
+    if (innerType.modqualfs.items.len != 0){
+        innerType.modqualfs.items[innerType.modqualfs.items.len - 1] = ._const;
+    } else {
+        innerType.rootqualf = ._const;
+    }
+    return ArgType{.dtype =  innerType, .aquisType = aquisitionType};
+}
+
+fn InnerParseType(tkns: Vec(Token)) !Dtype {
+    const root = try ParseRootType(tkns.items[0]);
+    var rootqualf: Dtype.TypeQualf = ._none;
+    const State = enum {
+        norm, //Undifferentiated type
+        l_brack, //We saw a `[`, so could be [], or [k]
+        array, //We have [k, so we expect a ]
+    };
+    var state: State = .norm;
+    var mods = Vec(Dtype.TypeMod).init(tkns.allocator);
+    var modqualfs = Vec(Dtype.TypeQualf).init(tkns.allocator);
+    var arysize: u16 = 0;
+
+    for (tkns.items) |tkn| {
+        switch (state) {
+            .norm => {
+                switch (tkn.ttype) {
+                    ._mul => {
+                        try mods.append(.pointer);
+                        try modqualfs.append(._none);
+                    }, ._left_bracket => {
+                        state = .l_brack;
+                    }, ._q_mark => {
+                        try mods.append(.nullable);
+                        try modqualfs.append(._none);
+                        state = .norm;
+                    }, ._const => {
+                        if (modqualfs.items.len == 0) { rootqualf = ._const; } 
+                        else { modqualfs.items[modqualfs.items.len - 1] = ._const; }
+                    }, ._mut => {
+                        if (modqualfs.items.len == 0) { rootqualf = ._mut; } 
+                        else { modqualfs.items[modqualfs.items.len - 1] = ._mut; }
+                    }, else => {},
+                }
+            }, .l_brack => {
+                switch (tkn.ttype) {
+                    ._number => {
+                        arysize = @intCast(try ComputeInt(tkn.textref));
+                        state = .array;
+                    }, ._right_bracket => {
+                        try mods.append(.slice);
+                        try modqualfs.append(._none);
+                        state = .norm;
+                    }, else => return error.Invalid_Type,
+                }
+            }, .array => {
+                switch (tkn.ttype) {
+                    ._right_bracket => {
+                        try mods.append(.{ .array = .{.length = arysize} });
+                        try modqualfs.append(._none);
+                        state = .norm;
+                    }, else => return error.Invalid_Type,
+                }
+            }
+        }
+    }
+
+    return Dtype{.root = root, .rootqualf = rootqualf, .mods = mods, .modqualfs = modqualfs};
+
+}
+
+fn ParseRootType(tkn: Token) !Dtype.roottype {
+    if (tkn.ttype != ._ident) return error.RootType_Isnt_Ident;
+    if (try tkn.textref.PeekFront() == 'u'){
+        var nstr = tkn.textref.Copy();
+        try nstr.PopFront();
+        const width = try ParseTypeInt(nstr.ToSlice());
+        return Dtype.roottype {.int = .{.signed = false, .width = width}};
+    }
+    else if (try tkn.textref.PeekFront() == 'i'){
+        var nstr = tkn.textref.Copy();
+        try nstr.PopFront();
+        const width = try ParseTypeInt(nstr.ToSlice());
+        return Dtype.roottype {.int = .{.signed = true, .width = width}};
+    }
+    return error.Failed_To_Parse_Type;
+}
+
+fn ComputeInt(str: Str) !u256 {
+    return try ComputeBasedInt(str)
+    orelse try ComputeDecInt(str);
+}
+
+fn ComputeBasedInt(str: Str) !?u256 {
+    const slice = str.ToSlice();
+    var val: u260 = 0;
+    if (slice[0] != '0') return null;
+
+    const base: u8 = switch (slice[1]) {
+        'b' => 2,
+        'o' => 8,
+        'x' => 16,
+        else => return null,
+    };
+
+    for (slice[2..]) |char| {
+        if ('0' <= char and char <= '9' and (char - '0') < base){
+            val *= base;
+            val += char - '0';
+            if (val >= 1 << 256) return error.Int_Too_Large;
+        } else if ('a' <= char and char < ('a' + base - 10)){
+            val *= base;
+            val += char - 'a';
+            if (val >= 1 << 256) return error.Int_Too_Large;
+        } else if (char == '_') {
+        } else {
+            return error.Symbol_Invalid_For_Int;
+        }
+    }
+    return @intCast(val);
+}
+
+fn ComputeDecInt(str: Str) !u256 {
+    var val: u260 = 0;
+    for (str.ToSlice()) |char| {
+        if ('0' <= char and char <= '9'){
+            val *= 10;
+            val += char - '0';
+            if (val >= 1 << 256) return error.Int_Too_Large;
+        } else if (char == '_') {
+        } else {
+            return error.Symbol_Invalid_For_Int;
+        }
+    }
+    return @intCast(val);
 }
 
 const ParseTLValue = @compileError("Unimplemented");
@@ -223,6 +396,7 @@ fn ExpectToken(expr: *Str, tkn: TokenType) !void {
     errdefer expr.* = copy;
     
     const got = try Tknz.ReadToken(expr, false);
+    expr.PopAllFront(strs.IsWS);
     if (got != tkn) {
         expr.Error("Expected token: {}, got token: {}\n", .{@tagName(tkn), @tagName(got)});
         return error.Got_Incorrect_Token;
@@ -233,7 +407,8 @@ fn ExpectToken(expr: *Str, tkn: TokenType) !void {
 fn QueryToken(expr: *Str, tkn: TokenType) !bool {
     const copy = expr.*;
     const got = try Tknz.ReadToken(expr, false);
-    if (got == tkn) return true;
+    expr.PopAllFront(strs.IsWS);
+    if (got.ttype == tkn) return true;
     expr.* = copy;  //Restore on false
     return false;
 }
@@ -251,11 +426,11 @@ fn ReduceCenter(list: *DLL(Exprnode), node: *ListNode) !void {
     const right = node.next orelse return error.Reduction_of_Expression_Boundary;
     
     AtmpReduce(left.data.token.ttype, .LR) catch |err| {
-        left.data.token.textref.Error("Reduction Failure `{e}`", .{err});
+        left.data.token.textref.Error("Reduction Failure `{any}`", .{err});
         return err;
     };
     AtmpReduce(right.data.token.ttype, .RL) catch |err| {
-        right.data.token.textref.Error("Reduction Failure `{e}`", .{err});
+        right.data.token.textref.Error("Reduction Failure `{any}`", .{err});
         return err;
     };
     
@@ -270,12 +445,78 @@ fn ReduceCenter(list: *DLL(Exprnode), node: *ListNode) !void {
 fn ReduceLeft(list: *DLL(Exprnode), node: *ListNode) !void {
     const right = node.next orelse return error.Reduction_of_Expression_Boundary;
     AtmpReduce(right.data.token.ttype, .RL) catch |err| {
-        right.data.token.textref.Error("Reduction Failure `{e}`", .{err});
+        right.data.token.textref.Error("Reduction Failure `{any}`", .{err});
         return err;
     };
     list.remove(right);
     try node.data.children.append(right.data);
     node.data.textref.end = right.data.textref.end;
+}
+
+test "Compute Ints" {
+    const expect = std.testing.expect;
+    const expectErr = std.testing.expectError;
+
+    const big = Str.FromSlice("115792089237316195423570985008687907853269984665640564039457584007913129639936");
+    try expectErr(error.Int_Too_Large, ComputeDecInt(big));
+
+    const bighex = Str.FromSlice("0x10000000000000000000000000000000000000000000000000000000000000000");
+    try expectErr(error.Int_Too_Large, ComputeBasedInt(bighex));
+
+    try expect(try ComputeBasedInt(Str.FromSlice("0b111")) == 7);
+    try expect(try ComputeDecInt(Str.FromSlice("123")) == 123);
+
+    try expect(try ComputeInt(Str.FromSlice("0o101")) == 0o101);
+    try expect(try ComputeInt(Str.FromSlice("0b1101")) == 0b1101);
+    try expect(try ComputeInt(Str.FromSlice("0234")) == 234);
+}
+
+test "Parse Type" {
+    const expect = std.testing.expect;
+    const expectEql = std.testing.expectEqual;
+    //const expectErr = std.testing.expectError;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    {
+        strs.forceShowErrors = true;
+        defer strs.forceShowErrors = false;
+        var stream = Str.FromSlice("u8 * copy x");
+
+        const arg = try ParseArgType(alloc, &stream);
+        try expect(arg.aquisType == .aqCopy);
+        try expectEql(arg.dtype.root, Dtype.roottype{.int = .{.width = 8, .signed = false}});
+        try expect(arg.dtype.rootqualf == ._none);
+        try expect(arg.dtype.mods.items.len == 1);
+        try expect(arg.dtype.mods.items[0] == .pointer);
+        try expect(arg.dtype.modqualfs.items.len == 1);
+        try expect(arg.dtype.modqualfs.items[0] == ._none);
+    }
+
+    {
+        strs.forceShowErrors = true;
+        defer strs.forceShowErrors = false;
+        var stream = Str.FromSlice("u176 const*const[183]mut? copy x"); // u176 const, * const, [183] mut, ? none, copy
+
+        const arg = try ParseArgType(alloc, &stream);
+        try expectEql(Dtype.roottype{.int = .{.width = 176, .signed = false}}, arg.dtype.root);
+        try expectEql(._const, arg.dtype.rootqualf);
+        
+        try expectEql(3, arg.dtype.modqualfs.items.len);
+        try expectEql(3, arg.dtype.mods.items.len);
+        
+        try expectEql(.pointer, arg.dtype.mods.items[0]);
+        try expectEql(._const, arg.dtype.modqualfs.items[0]);
+
+        try expectEql(Dtype.TypeMod{.array = .{.length = 183}}, arg.dtype.mods.items[1]);
+        try expectEql(._mut, arg.dtype.modqualfs.items[1]);
+
+        try expectEql(.nullable, arg.dtype.mods.items[2]);
+        try expectEql(._none, arg.dtype.modqualfs.items[2]);
+
+        try expect(arg.aquisType == .aqCopy);
+    }
 }
 
 test "Wrapping" {

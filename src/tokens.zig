@@ -2,46 +2,54 @@ const std = @import("std");
 
 pub const NUMPRECS = 0x11;
 
-pub const IDENT: u64   = 0b00;
-pub const M_IDENT: u64 = 0b11;
-pub const KWORD: u64   = 0b10;
-pub const M_KWORD: u64 = 0b11;
-pub const VALLIT: u64   = 0b01;
-pub const M_VALLIT: u64 = 0b11;
-pub const NUMBER: u64   = 0b0001;
-pub const M_NUMBER: u64 = 0b1111;
-pub const BOOL: u64   = 0b1001;
-pub const M_BOOL: u64 = 0b1111;
-pub const STR: u64   = 0b101;
-pub const M_STR: u64 = 0b111;
+pub const IDENT: u32   = 0b00;
+pub const M_IDENT: u32 = 0b11;
+pub const KWORD: u32   = 0b10;
+pub const M_KWORD: u32 = 0b11;
+pub const VALLIT: u32   = 0b01;
+pub const M_VALLIT: u32 = 0b11;
+pub const NUMBER: u32   = 0b0001;
+pub const M_NUMBER: u32 = 0b1111;
+pub const BOOL: u32   = 0b1001;
+pub const M_BOOL: u32 = 0b1111;
+pub const STR: u32   = 0b1010;
+pub const M_STR: u32 = 0b1111;
+pub const TYPE: u32   = 0b1011;
+pub const M_TYPE: u32 = 0b1111;
 
-pub const OPERAND: u64   = 0b011;
-pub const M_OPERAND: u64 = 0b111;
+pub const OPERAND: u32   = 0b011;
+pub const M_OPERAND: u32 = 0b111;
 
-pub const M_OPTYPE: u64   = 0b111 << 4;
-pub const OT_UNARY: u64   = 0b000 << 4;
-pub const OT_ARITH: u64   = 0b001 << 4;
-pub const OT_ASSG: u64    = 0b010 << 4;
-pub const OT_BITWISE: u64 = 0b011 << 4;
-pub const OT_COMP: u64    = 0b100 << 4;
-pub const OT_BOOL: u64    = 0b101 << 4;
-pub const OT_FIELD: u64   = 0b110 << 4;
-pub const OT_NWIDTH: u64  = 0b111 << 4;
+pub const M_OPTYPE: u32   = 0b111 << 4;
+pub const OT_UNARY: u32   = 0b000 << 4;
+pub const OT_ARITH: u32   = 0b001 << 4;
+pub const OT_ASSG: u32    = 0b010 << 4;
+pub const OT_BITWISE: u32 = 0b011 << 4;
+pub const OT_COMP: u32    = 0b100 << 4;
+pub const OT_BOOL: u32    = 0b101 << 4;
+pub const OT_FIELD: u32   = 0b110 << 4;
+pub const OT_NWIDTH: u32  = 0b111 << 4;
 
-pub const ISSIMPASSG: u64       = 1 << 0x03;
-pub const ISDECL: u64           = 1 << 0x10;
-pub const ISTYPEQUALF: u64      = 1 << 0x11;
-pub const ISCALLMOD: u64        = 1 << 0x12;
-pub const ISARGCONTFLOW: u64    = 1 << 0x13;
-pub const ISSIMPLECONTFLOW: u64 = 1 << 0x14;
-pub const ISDECLQUALF: u64      = 1 << 0x15;
-pub const ISCOMPTYPE: u64       = 1 << 0x16;
-pub const ISSUBSARG: u64        = 1 << 0x17;
-pub const CANEXPRROOT: u64      = 1 << 0x18;
+pub const ISSIMPASSG: u32       = 1 << 0x03;
+pub const ISDECL: u32           = 1 << 0x10;
+pub const ISTYPEQUALF: u32      = 1 << 0x11;
+pub const ISCALLMOD: u32        = 1 << 0x12;
+pub const ISARGCONTFLOW: u32    = 1 << 0x13;
+pub const ISSIMPLECONTFLOW: u32 = 1 << 0x14;
+pub const ISDECLQUALF: u32      = 1 << 0x15;
+pub const ISCOMPTYPE: u32       = 1 << 0x16;
+pub const ISSUBSARG: u32        = 1 << 0x17;
+pub const CANEXPRROOT: u32      = 1 << 0x18;
+pub const ISAQUISTYPE: u32      = 1 << 0x19;
 
 pub const IDOPPOS = 0x07;
 pub const IDKWPOS = 0x02;
 pub const OPPRECPOS = 0x0B;
+pub const IDSTPOS = 0x05;
+
+pub const IDTYPOS = 0x04;
+pub const TYWIDPOS = 0x08; //8 bit
+pub const TYLENPOS = 0x20; //8 bit
 
 pub const ID_IF         = 0b00000 << IDKWPOS;
 pub const ID_WHILE      = 0b00001 << IDKWPOS;
@@ -60,8 +68,9 @@ pub const ID_INLINE     = 0b01101 << IDKWPOS;
 pub const ID_RETURN     = 0b01110 << IDKWPOS;
 pub const ID_SWITCH     = 0b01111 << IDKWPOS;
 pub const ID_ASSERT     = 0b10000 << IDKWPOS;
-pub const ID_ASSUME     = 0b10011 << IDKWPOS;
+pub const ID_ASSUME     = 0b10001 << IDKWPOS;
 pub const ID_FOR        = 0b10010 << IDKWPOS;
+pub const ID_COPY       = 0b10011 << IDKWPOS;
 
 pub const ID_FUNCCALL   = 0b00 << IDOPPOS; //OT_NWIDTH
 pub const ID_ARRAYINDX  = 0b01 << IDOPPOS;
@@ -96,21 +105,31 @@ pub const ID_KW_OR  = 0b1 << IDOPPOS;
 pub const ID_VAL_ASSG = 0b0 << IDOPPOS;
 pub const ID_DEF_ASSG = 0b1 << IDOPPOS;
 
-pub const STRUCTURAL: u64   = 0b111;
-pub const M_STRUCTURALS: u64 = 0b111;
-pub const CAPLEFT: u64  = 1 << 0x03;
-pub const CAPRIGHT: u64 = 1 << 0x04;
+pub const STRUCTURAL: u32   = 0b111;
+pub const M_STRUCTURALS: u32 = 0b111;
+pub const CAPLEFT: u32  = 1 << 0x03;
+pub const CAPRIGHT: u32 = 1 << 0x04;
 
-pub const ID_PAREN: u64     = 0b00; //CAPLEFT xor CAPRIGHT
-pub const ID_BRACKET: u64   = 0b01; //CAPLEFT xor CAPRIGHT
-pub const ID_CURLY: u64     = 0b10; //CAPLEFT xor CAPRIGHT
-pub const ID_EXPRBNDRY: u64 = 0b11; //CAPLEFT xor CAPRIGHT
-pub const ID_COMMA: u64       = 0b0; //CAPLEFT and CAPRIGHT
-pub const ID_SEMICOLON: u64   = 0b1; //CAPLEFT and CAPRIGHT
+pub const ID_PAREN: u32     = 0b00 << IDSTPOS; //CAPLEFT xor CAPRIGHT
+pub const ID_BRACKET: u32   = 0b01 << IDSTPOS; //CAPLEFT xor CAPRIGHT
+pub const ID_CURLY: u32     = 0b10 << IDSTPOS; //CAPLEFT xor CAPRIGHT
+pub const ID_EXPRBNDRY: u32 = 0b11 << IDSTPOS; //CAPLEFT xor CAPRIGHT
+pub const ID_COMMA: u32       = 0b00 << IDSTPOS; //CAPLEFT and CAPRIGHT
+pub const ID_SEMICOLON: u32   = 0b01 << IDSTPOS; //CAPLEFT and CAPRIGHT
+pub const ID_QMARK: u32       = 0b10 << IDSTPOS; //CAPLEFT and CAPRIGHT
 
+pub const ID_UINT: u32       = 0b0000 << IDTYPOS;
+pub const ID_SINT: u32       = 0b0001 << IDTYPOS;
+pub const ID_FPUINT: u32     = 0b0010 << IDTYPOS;
+pub const ID_FPSINT: u32     = 0b0011 << IDTYPOS;
+pub const ID_BINFLOAT: u32   = 0b0100 << IDTYPOS;
+pub const ID_DECFLOAT: u32   = 0b0101 << IDTYPOS;
+pub const ID_TYPESTRUCT: u32 = 0b0110 << IDTYPOS;
+pub const ID_TYPEENUM: u32   = 0b0111 << IDTYPOS;
+pub const ID_TYPEUNION: u32  = 0b1000 << IDTYPOS;
+pub const ID_VOID: u32       = 0b1001 << IDTYPOS;
 
-
-pub const TokenType = enum (u64) {
+pub const TokenType = enum (u32) {
     _ident = IDENT,
     _number = NUMBER,
     _bool = BOOL,
@@ -120,8 +139,8 @@ pub const TokenType = enum (u64) {
     _while     = KWORD + ID_WHILE    + ISARGCONTFLOW,   
     _do        = KWORD + ID_DO       + ISARGCONTFLOW,   
     _var       = KWORD + ID_VAR      + ISDECL,          
-    _const     = KWORD + ID_CONST    + ISDECL            + ISTYPEQUALF,
-    _mut       = KWORD + ID_MUT      + ISTYPEQUALF,     
+    _const     = KWORD + ID_CONST    + ISDECL            + ISTYPEQUALF + ISAQUISTYPE, 
+    _mut       = KWORD + ID_MUT      + ISTYPEQUALF       + ISAQUISTYPE, 
     _static    = KWORD + ID_STATIC   + ISDECLQUALF,     
     _struct    = KWORD + ID_STRUCT   + ISCOMPTYPE,      
     _enum      = KWORD + ID_ENUM     + ISCOMPTYPE,      
@@ -134,7 +153,8 @@ pub const TokenType = enum (u64) {
     _switch    = KWORD + ID_SWITCH   + ISARGCONTFLOW,   
     _assert    = KWORD + ID_ASSERT   + ISSUBSARG,       
     _assume    = KWORD + ID_ASSUME   + ISSUBSARG,       
-    _for       = KWORD + ID_FOR      + ISARGCONTFLOW,   
+    _for       = KWORD + ID_FOR      + ISARGCONTFLOW,  
+    _copy      = KWORD + ID_COPY     + ISAQUISTYPE, 
 
     _funccall  = OPERAND + OT_NWIDTH  + ID_FUNCCALL   + Precidence(0)         + CANEXPRROOT,      
     _arrayindx = OPERAND + OT_NWIDTH  + ID_ARRAYINDX  + Precidence(0),       
@@ -188,10 +208,22 @@ pub const TokenType = enum (u64) {
     _right_curly    = STRUCTURAL + CAPLEFT  + ID_CURLY,    
     _start_expr     = STRUCTURAL + CAPRIGHT + ID_EXPRBNDRY,
     _end_expr       = STRUCTURAL + CAPLEFT  + ID_EXPRBNDRY,
-    _comma          = STRUCTURAL + CAPLEFT  + CAPRIGHT  + ID_COMMA,    
-    _semicolon      = STRUCTURAL + CAPLEFT  + CAPRIGHT  + ID_SEMICOLON,
+    _comma          = STRUCTURAL + CAPLEFT  + CAPRIGHT      + ID_COMMA,    
+    _semicolon      = STRUCTURAL + CAPLEFT  + CAPRIGHT      + ID_SEMICOLON,
+    _q_mark         = STRUCTURAL + CAPLEFT  + CAPRIGHT      + ID_QMARK,
+
+    _uint        = TYPE + ID_UINT,      
+    _sint        = TYPE + ID_SINT,      
+    _fpuint      = TYPE + ID_FPUINT,    
+    _fpsint      = TYPE + ID_FPSINT,    
+    _binfloat    = TYPE + ID_BINFLOAT,  
+    _decfloat    = TYPE + ID_DECFLOAT,  
+    _type_struct = TYPE + ID_TYPESTRUCT,
+    _type_enum   = TYPE + ID_TYPEENUM,  
+    _type_union  = TYPE + ID_TYPEUNION, 
+    _void        = TYPE + ID_VOID,  
     
-    pub inline fn Int(self: @This()) u64 {
+    pub inline fn Int(self: @This()) u32 {
         return @intFromEnum(self);
     }
 
@@ -207,21 +239,21 @@ pub const TokenType = enum (u64) {
     pub inline fn IsKWord(self: @This()) bool {
         return self.Int() & M_KWORD == KWORD;
     }
+    pub inline fn IsType(self: @This()) bool {
+        return self.Int() & M_TYPE == TYPE;
+    }
     pub inline fn CanCapRight(self: @This()) bool {
         return self.Int() & CAPRIGHT != 0;
     }
     pub inline fn CanCapLeft(self: @This()) bool {
         return self.Int() & CAPLEFT != 0;
     }
-
-    pub inline fn GetOpType(self: @This()) u64 {
+    pub inline fn GetOpType(self: @This()) u32 {
         return self.Int() & M_OPTYPE;
     }
-    
-
 };
 
-fn Precidence(val: comptime_int) u64 {
+fn Precidence(val: comptime_int) u32 {
     if (val < 0) @compileError("Cannot have a negative precidence");
     if (val >= NUMPRECS) @compileError( std.fmt.comptimePrint("Precidence greater than maximum declared precidence ({})", .{NUMPRECS}));
     return val << OPPRECPOS;
@@ -284,5 +316,5 @@ pub const StructSyms = [_] OpSymPair {
     OpSymPair{.sym = "}", .tkn = ._right_curly},
     OpSymPair{.sym = ",", .tkn = ._comma},
     OpSymPair{.sym = ";", .tkn = ._semicolon},
-    
+    OpSymPair{.sym = "?", .tkn = ._q_mark},
 };

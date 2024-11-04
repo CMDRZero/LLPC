@@ -2,6 +2,7 @@ const Str = @import("strings.zig").Str;
 const DPrint = @import("std").debug.print;
 
 pub fn ShowErrorAtPoint(expr: *Str, loc: u32) void {
+    @compileLog("Deprecated");
     var linestart: u32 = 0;
     var linenum: u32 = 0;
     for (0..loc) |i| {

@@ -1,5 +1,6 @@
 const std = @import("std");
 const IsTesting = @import("builtin").is_test;
+pub var forceShowErrors = false;
 
 pub const Str = struct {
     start: u32, //Inclusive
@@ -11,7 +12,7 @@ pub const Str = struct {
     }
 
     pub fn Error(self: Str, comptime fmt: []const u8, args: anytype) void {
-        if (IsTesting) return;
+        if (!forceShowErrors and IsTesting) return;
         if (self.start > self.end) {
             @panic("Str has start after end");
         }
@@ -33,6 +34,28 @@ pub const Str = struct {
         std.debug.print(fmt, args);
     }
 
+    pub fn ErrorAtFront(self: Str, comptime fmt: []const u8, args: anytype) void {
+        if (!forceShowErrors and IsTesting) return;
+        if (self.start > self.end) {
+            @panic("Str has start after end");
+        }
+        var linestart: u32 = 0;
+        var linenum: u32 = 0;
+        for (0..self.start) |i| {
+            const char = self.backer[i];
+            if (char == '\n' or char == '\r') {
+                linestart = @intCast(i + 1);
+            }
+            linenum += @intFromBool(char == '\n');
+        }
+        var lineend = linestart;
+        while (lineend < self.backer.len and !(self.backer[lineend] == '\r' or self.backer[lineend] == '\n')) : (lineend += 1){}
+        std.debug.print("Error on line: {}, col: {}\n\t{s}\n", .{linenum+1, self.start-linestart+1, self.backer[linestart..lineend]});
+        const spad = (" " ** 256)[0..self.start-linestart];
+        std.debug.print("\t{s}^\n", .{spad});
+        std.debug.print(fmt, args);
+    }
+
     pub fn format(self: Str, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         return writer.print("Str{{ {}-{}: \"{s}\" }}", .{ self.start, self.end, self.ToSlice() });
     }
@@ -41,8 +64,12 @@ pub const Str = struct {
         return self.backer[self.start..self.end];
     }
 
-    pub fn Copy(self: *Str) Str {
-        return self.*;
+    pub fn GetWidth(self: Str) u32 {
+        return self.end - self.start;
+    }
+
+    pub fn Copy(self: Str) Str {
+        return self;
     }
 
     pub fn NewReader(self: Str) Str {
@@ -53,7 +80,7 @@ pub const Str = struct {
         self.start = other.end;
     }
 
-    pub fn PeekFront(self: *Str) !u8 {
+    pub fn PeekFront(self: Str) !u8 {
         if (self.start >= self.end) {
             return error.PeekEmptyStr;
         }
@@ -144,6 +171,14 @@ pub const Str = struct {
             self.PopFront() catch unreachable;
         }
     }
+
+    pub fn Eqls(lhs: Str, rhs: []const u8) bool {
+    if (lhs.end - lhs.start != rhs.len) return false;
+    for (rhs, 0..) |char, ind| {
+        if (lhs.IndexStart(@intCast(ind)) != char) return false;
+    }
+    return true;
+}
 };
 
 pub fn IsWS(char: u8) bool {

@@ -9,9 +9,8 @@ const ShowErrorAtPoint = @import("errors.zig").ShowErrorAtPoint;
 const tokenizer = @import("tokenizer.zig");
 const Token = tokenizer.Token;
 
-const ast = @import("ast.zig");
 
-const tokenslib = @import("tokens.zig");
+const parser = @import("parser.zig");
 
 ///Here I'm using a global struct so I can test using different globals if need be, and so it can be passed around.
 ///Furthermore:
@@ -41,20 +40,10 @@ pub fn main() !void {
     const path = "test.lpc";
     var data = try OpenFile(global, path);
     
-    var tokens = Vec(Token).init(global.allocator);
-    _ = tokenslib.TokenType._do;
+    _ = &data;
 
-    _ = ast.ParseExprToAST(&data, &tokens, global.allocator) catch {DPrint("Tokenization Error\n", .{}); return;};
 
-    //tokenizer.ExprToTokens(&data, &tokens) catch {DPrint("Tokenization Error\n", .{}); return;};
-
-    //tokens.items[3].data.Error("Test Error\n", .{});
-    
-    for (0..tokens.items.len) |idx| {
-        DPrint("Token_{} is {any}\n", .{idx, tokens.items[idx]});
-    }
-
-    DPrint("Max Prec is {}", .{ast.maxprec});
+    //DPrint("Max Prec is {}", .{ast.maxprec});
 }
 
 //  * * * * * * * * * * * * * * * * * * * *          * * * * * * * * * * * * * * * * * * * *  

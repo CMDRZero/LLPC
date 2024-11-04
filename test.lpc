@@ -1,7 +1,7 @@
 int x = 2 +  -4;
 
-void main() {
+void Main() {
     int sum = 2 + 2;
     assert sum == 4;
-    std:println(msg);
+    std:PrintLn(msg);
 }

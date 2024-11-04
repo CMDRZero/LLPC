@@ -12,6 +12,42 @@ const TokenType = Tkns.TokenType;
 pub const Token = struct {
     textref: Str,
     ttype: TokenType,
+    data: u32 = 0,
+
+    pub inline fn GetIntWidth(self: Token) u9 {
+        const rawwidth = self.data % (1 << 9);
+        return @intCast(rawwidth);
+    }
+
+    pub inline fn SetIntWidth(self: *Token, width: u9) u9 {
+        self.data &= @as(u32, ~(1 << 9 - 1));
+        self.data |= width;
+    }
+
+    pub inline fn GetIntDecimals(self: Token) u9 {
+        const rawwidth = (self.data >> 9) % (1 << 9);
+        return @intCast(rawwidth);
+    }
+
+    pub inline fn SetIntDecimals(self: *Token, width: u9) u9 {
+        self.data &= @as(u32, ~((1 << 9 - 1) << 9));
+        self.data |= width << 9;
+    }
+
+    pub fn NewInt(textref: Str, ttype: TokenType, width: u9) !Token {
+        if (width == 0) return error.Zero_Width_Type;
+        return Token{.textref = textref, .ttype = ttype, .data = width};
+    }
+
+    pub fn NewFloat(textref: Str, ttype: TokenType, width: u9) !Token {
+        if (width == 0) return error.Zero_Width_Type;
+        return Token{.textref = textref, .ttype = ttype, .data = width};
+    }
+
+    pub fn NewFPInt(textref: Str, ttype: TokenType, width: u9, decimals: u9) !Token {
+        if (decimals == 0) return error.Zero_Width_Type;
+        return Token{.textref = textref, .ttype = ttype, .data = @as(u32, decimals) << 9 | @as(u32, width)};
+    }
 };
 
 ///Will greedily consume tokens until it reaches a left facing unbound structural parenthesis, or a semi-colon. The semi-colon will be consumed
@@ -126,17 +162,16 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
 }
 
 pub fn ReadToken(expr: *Str, perferUnary: bool) !Token {
-    if (!@import("builtin").is_test){
-        errdefer std.log.debug("Error caught on expression point: {}", .{expr.start});
-        errdefer ShowErrorAtPoint(expr, expr.start);
-    }
+    //errdefer std.log.debug("Error caught on expression point: {}", .{expr.start});
+    errdefer expr.ErrorAtFront("Failed here\n", .{});
 
     return try ReadOperand(expr, perferUnary)
+    orelse try ReadType(expr)
     orelse try ReadKeyword(expr)  
     orelse try ReadIdent(expr)
     orelse try ReadNum(expr)
     orelse try ReadStructural(expr)
-    orelse error.Parse_Failure;
+    orelse error.Parse_Token_Failure;
 }
 
 fn ReadKeyword(expr: *Str) !?Token {
@@ -242,6 +277,88 @@ fn ReadStructural(expr: *Str) !?Token {
     return null;
 }
 
+fn ReadType(expr: *Str) !?Token {
+    const copy = expr.*;
+    errdefer expr.* = copy;
+
+    var tknstr = expr.NewReader();
+
+    var nextchar = tknstr.PeekEndNext();
+    if (nextchar == 'u' or nextchar == 'i'){
+        const wasUnsigned = nextchar == 'u';
+        tknstr.ReadEnd();
+        tknstr.ReadAllEnd(strs.IsN);
+        const width = EvalTypeInt(tknstr.ToSlice()[1..]) catch |err| switch (err){
+            error.Symbol_Invalid_For_Int, error.No_Chars_Found 
+                => return null,
+            else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else return err,
+        };
+
+        nextchar = tknstr.PeekEndNext();
+        if (strs.IsUA(nextchar)) {
+            return null;
+        } else if (nextchar == '.') {
+            tknstr.ReadEnd();
+            const cend = tknstr.GetWidth();
+            tknstr.ReadAllEnd(strs.IsN);
+            const decs = EvalTypeInt(tknstr.ToSlice()[cend..]) catch |err| switch (err){
+                error.Symbol_Invalid_For_Int, error.No_Chars_Found 
+                    => return null,
+                else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else return err,
+            };
+            const ttype: TokenType = if(wasUnsigned) ._fpuint else ._fpsint;
+            if (strs.IsUA(nextchar)) return null; 
+            expr.FromEndOf(tknstr);
+            return try Token.NewFPInt(tknstr, ttype, width, decs);
+        } else {
+            const ttype: TokenType = if(wasUnsigned) ._uint else ._sint;
+            expr.FromEndOf(tknstr);
+            return try Token.NewInt(tknstr, ttype, width);
+        }
+
+    } else if (nextchar == 'f' or nextchar == 'd') {
+        const wasBinary = nextchar == 'f';
+        tknstr.ReadEnd();
+        tknstr.ReadAllEnd(strs.IsN);
+        const width = EvalTypeInt(tknstr.ToSlice()[1..]) catch |err| switch (err){
+            error.Symbol_Invalid_For_Int, error.No_Chars_Found 
+                => return null,
+            else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else return err,
+        };
+
+        nextchar = tknstr.PeekEndNext();
+        if (strs.IsUA(nextchar)) return null; 
+        const ttype: TokenType = if(wasBinary) ._binfloat else ._decfloat;
+        expr.FromEndOf(tknstr);
+        return try Token.NewFloat(tknstr, ttype, width);
+
+    } else {
+        if (try StrStartsWith(expr.*, "void")) {
+            tknstr.ReadEndAmt(4);
+            expr.FromEndOf(tknstr);
+            return Token{.textref = tknstr, .ttype = ._void};
+        } else {
+            return null;
+        }
+    }
+    return null;
+}
+
+fn EvalTypeInt(str: [] const u8) !u9 {
+    var val: u16 = 0;
+    if (str.len == 0) return error.No_Chars_Found;
+    for (str) |char| {
+        if ('0' <= char and char <= '9'){
+            val *= 10;
+            val += char - '0';
+            if (val > 256) return error.Int_Too_Large;
+        } else {
+            return error.Symbol_Invalid_For_Int;
+        }
+    }
+    return @intCast(val);
+}
+
 fn StrStartsWith(lhs: Str, rhs: []const u8) !bool {
     if (rhs.len > (lhs.end - lhs.start)) return false;
     for (rhs, 0..) |char, ind| {
@@ -335,6 +452,81 @@ test "Numbers" {
     try expectErr(error.Not_A_Number, errtoken);
 }
 
+test "Types" {
+    const expectEql = std.testing.expectEqual;
+    const expectErr = std.testing.expectError;
+
+    var file: Str = Str.FromSlice("");
+    var token: ?Token = null;
+    var errtoken: anyerror!?Token = null;
+
+    file = Str.FromSlice("abc");
+    token = try ReadType(&file);
+    try expectEql(null, token);
+
+    file = Str.FromSlice("u16");
+    token = try ReadType(&file);
+    try expectEql(._uint, token.?.ttype);
+    try expectEql(16, token.?.GetIntWidth());
+
+    file = Str.FromSlice("i32");
+    token = try ReadType(&file);
+    try expectEql(._sint, token.?.ttype);
+    try expectEql(32, token.?.GetIntWidth());
+
+    file = Str.FromSlice("u1000");
+    errtoken = ReadType(&file);
+    try expectErr(error.Int_Too_Large, errtoken);
+
+    file = Str.FromSlice("u1000a");
+    token = try ReadType(&file);
+    try expectEql(null, token);
+
+    file = Str.FromSlice("f32");
+    token = try ReadType(&file);
+    try expectEql(._binfloat, token.?.ttype);
+    try expectEql(32, token.?.GetIntWidth());
+
+    file = Str.FromSlice("d32");
+    token = try ReadType(&file);
+    try expectEql(._decfloat, token.?.ttype);
+    try expectEql(32, token.?.GetIntWidth());
+
+    file = Str.FromSlice("f1000");
+    errtoken = ReadType(&file);
+    try expectErr(error.Int_Too_Large, errtoken);
+
+    file = Str.FromSlice("d1000a");
+    token = try ReadType(&file);
+    try expectEql(null, token);
+
+    file = Str.FromSlice("u8.8");
+    token = try ReadType(&file);
+    try expectEql(._fpuint, token.?.ttype);
+    try expectEql(8, token.?.GetIntWidth());
+    try expectEql(8, token.?.GetIntDecimals());
+
+    file = Str.FromSlice("u0");
+    errtoken = ReadType(&file);
+    try expectErr(error.Zero_Width_Type, errtoken);
+
+    file = Str.FromSlice("u16.0");
+    errtoken = ReadType(&file);
+    try expectErr(error.Zero_Width_Type, errtoken);
+
+    file = Str.FromSlice("u0.16");
+    token = try ReadType(&file);
+    try expectEql(._fpuint, token.?.ttype);
+    try expectEql(0, token.?.GetIntWidth());
+    try expectEql(16, token.?.GetIntDecimals());
+
+    file = Str.FromSlice("i256.256");
+    token = try ReadType(&file);
+    try expectEql(._fpsint, token.?.ttype);
+    try expectEql(256, token.?.GetIntWidth());
+    try expectEql(256, token.?.GetIntDecimals());
+}
+
 test "Operands" {
     const expect = std.testing.expect;
 
@@ -396,6 +588,7 @@ test "Structurals" {
 
 test "General" {
     const expect = std.testing.expect;
+    const expectEql = std.testing.expectEqual;
     const expectErr = std.testing.expectError;
 
     var file: Str = Str.FromSlice("");
@@ -416,7 +609,7 @@ test "General" {
 
     file = Str.FromSlice("if");
     token = try ReadToken(&file, false);
-    try expect(token.ttype == ._if);
+    try expectEql(._if, token.ttype);
 
     file = Str.FromSlice("x");
     token = try ReadToken(&file, false);
@@ -445,6 +638,8 @@ test "General" {
 }
 
 test "Multitokens" {
+    //var unreach:u32 = 0;
+
     const expect = std.testing.expect;
     const expectErr = std.testing.expectError;
 
@@ -461,7 +656,6 @@ test "Multitokens" {
         }
     }
 
-
     expect(tokens.items.len == 4) catch |err| {
         std.log.warn("Real length was: {}\n", .{tokens.items.len});
         return err;
@@ -472,9 +666,11 @@ test "Multitokens" {
     try expect(tokens.items[3].ttype == ._semicolon);
     tokens.deinit();
 
+    //if ((&unreach).* == 0) std.log.warn("Got here: {}", .{@src().line});
 
     file = Str.FromSlice("-x -- y (-z)-w;");
     tokens = try ExprToTokens(alloc, &file);
+
 
     expect(tokens.items.len == 13) catch |err| {
         std.log.warn("Real length was: {}\n", .{tokens.items.len});
@@ -495,6 +691,23 @@ test "Multitokens" {
     try expect(tokens.items[12].ttype == ._semicolon);
     tokens.deinit();
 
+
+
+    file = Str.FromSlice("(int);");
+    tokens = try ExprToTokens(alloc, &file);
+
+    expect(tokens.items.len == 4) catch |err| {
+        std.log.warn("Real length was: {}\n", .{tokens.items.len});
+        return err;
+    };
+
+    try expect(tokens.items[0].ttype == ._left_paren);
+    try expect(tokens.items[1].ttype == ._ident);
+    try expect(tokens.items[2].ttype == ._right_paren);
+    try expect(tokens.items[3].ttype == ._semicolon);
+    tokens.deinit();
+    
+    //if((&0).* == 0) unreachable;
 
     file = Str.FromSlice("(int)f(x, y);");
     tokens = try ExprToTokens(alloc, &file);
@@ -611,7 +824,7 @@ test "Multitokens" {
     file = Str.FromSlice("1 + 2");
     errtokens = ExprToTokens(alloc, &file);
 
-    try expectErr(error.Parse_Failure, errtokens);
+    try expectErr(error.Parse_Token_Failure, errtokens);
     
     
 
