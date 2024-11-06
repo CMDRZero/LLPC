@@ -71,6 +71,7 @@ pub const ID_ASSERT     = 0b10000 << IDKWPOS;
 pub const ID_ASSUME     = 0b10001 << IDKWPOS;
 pub const ID_FOR        = 0b10010 << IDKWPOS;
 pub const ID_COPY       = 0b10011 << IDKWPOS;
+pub const ID_FN         = 0b10100 << IDKWPOS;
 
 pub const ID_FUNCCALL   = 0b00 << IDOPPOS; //OT_NWIDTH
 pub const ID_ARRAYINDX  = 0b01 << IDOPPOS;
@@ -155,6 +156,7 @@ pub const TokenType = enum (u32) {
     _assume    = KWORD + ID_ASSUME   + ISSUBSARG,       
     _for       = KWORD + ID_FOR      + ISARGCONTFLOW,  
     _copy      = KWORD + ID_COPY     + ISAQUISTYPE, 
+    _fn        = KWORD + ID_FN,
 
     _funccall  = OPERAND + OT_NWIDTH  + ID_FUNCCALL   + Precidence(0)         + CANEXPRROOT,      
     _arrayindx = OPERAND + OT_NWIDTH  + ID_ARRAYINDX  + Precidence(0),       

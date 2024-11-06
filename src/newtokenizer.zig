@@ -174,6 +174,12 @@ pub fn ReadToken(expr: *Str, perferUnary: bool) !Token {
     orelse error.Parse_Token_Failure;
 }
 
+pub fn PeekToken(expr: *Str) !Token {
+    const copy = expr.*;
+    defer expr.* = copy;
+    return try ReadToken(expr, false);
+}
+
 fn ReadKeyword(expr: *Str) !?Token {
     inline for (@typeInfo(TokenType).Enum.fields) |flaginfo| {
         const flagname = flaginfo.name;
