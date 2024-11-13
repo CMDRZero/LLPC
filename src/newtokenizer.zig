@@ -35,17 +35,26 @@ pub const Token = struct {
     }
 
     pub fn NewInt(textref: Str, ttype: TokenType, width: u9) !Token {
-        if (width == 0) return error.Zero_Width_Type;
+        if (width == 0) {
+            textref.Error("Cannot have integer with width 0.\n", .{});
+            return error.Zero_Width_Type;
+        }
         return Token{.textref = textref, .ttype = ttype, .data = width};
     }
 
     pub fn NewFloat(textref: Str, ttype: TokenType, width: u9) !Token {
-        if (width == 0) return error.Zero_Width_Type;
+        if (width == 0) {
+            textref.Error("Cannot have float with 0 backing bits.\n", .{});
+            return error.Zero_Width_Type;
+        }
         return Token{.textref = textref, .ttype = ttype, .data = width};
     }
 
     pub fn NewFPInt(textref: Str, ttype: TokenType, width: u9, decimals: u9) !Token {
-        if (decimals == 0) return error.Zero_Width_Type;
+        if (decimals == 0) {
+            textref.Error("Cannot have fixed point integer with 0 decimal places.\n", .{});
+            return error.Zero_Width_Type;
+        }
         return Token{.textref = textref, .ttype = ttype, .data = @as(u32, decimals) << 9 | @as(u32, width)};
     }
 };
@@ -126,13 +135,13 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
             if (pairs.items.len == 0 and ntype == ._right_paren) break: loop tkns; //If there is an unmatched right parenthesis, this will terminate an expression.
             
             if (pairs.items.len == 0){
-                nToken.textref.Error("Unexpected token `{s}` is unpaired", .{nToken.textref});
+                nToken.textref.Error("Unexpected token `{s}` is unpaired\n", .{nToken.textref.ToSlice()});
                 return error.Mismatched_Symbol;
             }
             
             const pToken = pairs.pop();
             if (pToken.ttype.Int() != expect) {
-                nToken.textref.Error("Unexpected token `{s}` does not match pairing symbol: `{s}`", .{nToken.textref, pToken.textref});
+                nToken.textref.Error("Unexpected token `{s}` does not match pairing symbol: `{s}`\n", .{nToken.textref, pToken.textref});
                 return error.Mismatched_Symbol;
             }
             
@@ -163,7 +172,7 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
 
 pub fn ReadToken(expr: *Str, perferUnary: bool) !Token {
     //errdefer std.log.debug("Error caught on expression point: {}", .{expr.start});
-    errdefer expr.ErrorAtFront("Failed here\n", .{});
+    errdefer expr.ErrorAtFront("Tokenization failure.\n", .{});
 
     return try ReadOperand(expr, perferUnary)
     orelse try ReadType(expr)
@@ -297,7 +306,13 @@ fn ReadType(expr: *Str) !?Token {
         const width = EvalTypeInt(tknstr.ToSlice()[1..]) catch |err| switch (err){
             error.Symbol_Invalid_For_Int, error.No_Chars_Found 
                 => return null,
-            else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else return err,
+            else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else {
+                    switch (err){
+                        error.Int_Too_Large => tknstr.ErrorAtFront("Integer width is too great, must be at most 256.\n", .{}),
+                        else => tknstr.ErrorAtFront("Invalid integer width.\n", .{}),
+                    }
+                    return err;
+                },
         };
 
         nextchar = tknstr.PeekEndNext();
@@ -310,7 +325,13 @@ fn ReadType(expr: *Str) !?Token {
             const decs = EvalTypeInt(tknstr.ToSlice()[cend..]) catch |err| switch (err){
                 error.Symbol_Invalid_For_Int, error.No_Chars_Found 
                     => return null,
-                else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else return err,
+                else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else {
+                    switch (err){
+                        error.Int_Too_Large => tknstr.ErrorAtFront("Fixed Point Integer width is too great, must be at most 256.\n", .{}),
+                        else => tknstr.ErrorAtFront("Invalid fixed point integer width.\n", .{}),
+                    }
+                    return err;
+                },
             };
             const ttype: TokenType = if(wasUnsigned) ._fpuint else ._fpsint;
             if (strs.IsUA(nextchar)) return null; 
@@ -329,7 +350,13 @@ fn ReadType(expr: *Str) !?Token {
         const width = EvalTypeInt(tknstr.ToSlice()[1..]) catch |err| switch (err){
             error.Symbol_Invalid_For_Int, error.No_Chars_Found 
                 => return null,
-            else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else return err,
+            else => if (strs.IsUA(tknstr.PeekEndNext())) { return null; } else {
+                switch (err){
+                    error.Int_Too_Large => tknstr.ErrorAtFront("Float backing width is too great, must be at most 256.\n", .{}),
+                    else => tknstr.ErrorAtFront("Invalid float backing width.\n", .{}),
+                }
+                return err;
+            },
         };
 
         nextchar = tknstr.PeekEndNext();

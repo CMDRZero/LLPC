@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const NUMPRECS = 0x11;
+pub const NUMPRECS = 11;
 
 pub const IDENT: u32   = 0b00;
 pub const M_IDENT: u32 = 0b11;
@@ -252,6 +252,10 @@ pub const TokenType = enum (u32) {
     }
     pub inline fn GetOpType(self: @This()) u32 {
         return self.Int() & M_OPTYPE;
+    }
+    pub inline fn GetPrec(self: @This()) u32 {
+        const bits: u32 = @intCast(31 - @clz(NUMPRECS));
+        return (self.Int() >> OPPRECPOS) & (1 << bits - 1);
     }
 };
 
