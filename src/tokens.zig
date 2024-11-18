@@ -12,9 +12,9 @@ pub const NUMBER: u32   = 0b0001;
 pub const M_NUMBER: u32 = 0b1111;
 pub const BOOL: u32   = 0b1001;
 pub const M_BOOL: u32 = 0b1111;
-pub const STR: u32   = 0b1010;
+pub const STR: u32   = 0b0101;
 pub const M_STR: u32 = 0b1111;
-pub const TYPE: u32   = 0b1011;
+pub const TYPE: u32   = 0b1101;
 pub const M_TYPE: u32 = 0b1111;
 
 pub const OPERAND: u32   = 0b011;
@@ -48,8 +48,7 @@ pub const OPPRECPOS = 0x0B;
 pub const IDSTPOS = 0x05;
 
 pub const IDTYPOS = 0x04;
-pub const TYWIDPOS = 0x08; //8 bit
-pub const TYLENPOS = 0x20; //8 bit
+pub const INVTYPEPOS = 0x1A;
 
 pub const ID_IF         = 0b00000 << IDKWPOS;
 pub const ID_WHILE      = 0b00001 << IDKWPOS;
@@ -106,6 +105,12 @@ pub const ID_KW_OR  = 0b1 << IDOPPOS;
 pub const ID_VAL_ASSG = 0b0 << IDOPPOS;
 pub const ID_DEF_ASSG = 0b1 << IDOPPOS;
 
+pub const InvokeType = enum (u2) {
+    binary = 0,
+    unary_right = 1,
+    multi_arg = 2,
+};
+
 pub const STRUCTURAL: u32   = 0b111;
 pub const M_STRUCTURALS: u32 = 0b111;
 pub const CAPLEFT: u32  = 1 << 0x03;
@@ -158,49 +163,50 @@ pub const TokenType = enum (u32) {
     _copy      = KWORD + ID_COPY     + ISAQUISTYPE, 
     _fn        = KWORD + ID_FN,
 
-    _funccall  = OPERAND + OT_NWIDTH  + ID_FUNCCALL   + Precidence(0)         + CANEXPRROOT,      
-    _arrayindx = OPERAND + OT_NWIDTH  + ID_ARRAYINDX  + Precidence(0),       
-    _dot       = OPERAND + OT_FIELD   + ID_DOT        + Precidence(0),       
-    _colon     = OPERAND + OT_FIELD   + ID_COLON      + Precidence(0),       
-    _pos       = OPERAND + OT_UNARY   + ID_POS        + Precidence(1),       
-    _neg       = OPERAND + OT_UNARY   + ID_NEG        + Precidence(1),       
-    _not       = OPERAND + OT_UNARY   + ID_NOT        + Precidence(1),       
-    _tilde     = OPERAND + OT_UNARY   + ID_TILDE      + Precidence(1),       
-    _typecast  = OPERAND + OT_NWIDTH  + ID_TYPECAST   + Precidence(1),       
-    _mul       = OPERAND + OT_ARITH   + ID_MUL        + Precidence(2),       
-    _div       = OPERAND + OT_ARITH   + ID_DIV        + Precidence(2),       
-    _mod       = OPERAND + OT_ARITH   + ID_MOD        + Precidence(2),       
-    _bsl       = OPERAND + OT_ARITH   + ID_BSL        + Precidence(2),       
-    _brl       = OPERAND + OT_ARITH   + ID_BRL        + Precidence(2),       
-    _bsr       = OPERAND + OT_ARITH   + ID_BSR        + Precidence(2),       
-    _brr       = OPERAND + OT_ARITH   + ID_BRR        + Precidence(2),       
-    _add       = OPERAND + OT_ARITH   + ID_ADD        + Precidence(3),       
-    _sub       = OPERAND + OT_ARITH   + ID_SUB        + Precidence(3),       
-    _and       = OPERAND + OT_BITWISE + ID_AND        + Precidence(4),       
-    _xor       = OPERAND + OT_BITWISE + ID_XOR        + Precidence(5),       
-    _or        = OPERAND + OT_BITWISE + ID_OR         + Precidence(6),       
-    _lt        = OPERAND + OT_COMP    + ID_LT         + Precidence(7),       
-    _le        = OPERAND + OT_COMP    + ID_LE         + Precidence(7),       
-    _eq        = OPERAND + OT_COMP    + ID_EQ         + Precidence(7),       
-    _ge        = OPERAND + OT_COMP    + ID_GE         + Precidence(7),       
-    _gt        = OPERAND + OT_COMP    + ID_GT         + Precidence(7),       
-    _ne        = OPERAND + OT_COMP    + ID_NE         + Precidence(7),       
-    _kw_and    = OPERAND + OT_BOOL    + ID_KW_AND     + Precidence(8),       
-    _kw_or     = OPERAND + OT_BOOL    + ID_KW_AND     + Precidence(9),       
-    _assg      = OPERAND + ISSIMPASSG + ID_VAL_ASSG   + Precidence(10)        + CANEXPRROOT,      
-    _def_assg  = OPERAND + ISSIMPASSG + ID_DEF_ASSG   + Precidence(10),     
-    _add_assg  = OPERAND + OT_ASSG    + ID_ADD        + Precidence(10)        + CANEXPRROOT,      
-    _sub_assg  = OPERAND + OT_ASSG    + ID_SUB        + Precidence(10)        + CANEXPRROOT,      
-    _mul_assg  = OPERAND + OT_ASSG    + ID_MUL        + Precidence(10)        + CANEXPRROOT,      
-    _div_assg  = OPERAND + OT_ASSG    + ID_DIV        + Precidence(10)        + CANEXPRROOT,      
-    _mod_assg  = OPERAND + OT_ASSG    + ID_MOD        + Precidence(10)        + CANEXPRROOT,      
-    _bsl_assg  = OPERAND + OT_ASSG    + ID_BSL        + Precidence(10)        + CANEXPRROOT,      
-    _brl_assg  = OPERAND + OT_ASSG    + ID_BRL        + Precidence(10)        + CANEXPRROOT,      
-    _bsr_assg  = OPERAND + OT_ASSG    + ID_BSR        + Precidence(10)        + CANEXPRROOT,      
-    _brr_assg  = OPERAND + OT_ASSG    + ID_BRR        + Precidence(10)        + CANEXPRROOT,      
-    _and_assg  = OPERAND + OT_ASSG    + ID_AND        + Precidence(10)        + CANEXPRROOT,      
-    _xor_assg  = OPERAND + OT_ASSG    + ID_XOR        + Precidence(10)        + CANEXPRROOT,      
-    _or_assg   = OPERAND + OT_ASSG    + ID_OR         + Precidence(10)        + CANEXPRROOT,       
+    _funccall  = OPERAND + OT_NWIDTH  + ID_FUNCCALL   + Precidence(0) + InvType(.multi_arg)       + CANEXPRROOT,      
+    _structinst= OPERAND + OT_NWIDTH  + ID_STRUCTINST + Precidence(0) + InvType(.multi_arg),
+    _arrayindx = OPERAND + OT_NWIDTH  + ID_ARRAYINDX  + Precidence(0) + InvType(.binary),       
+    _dot       = OPERAND + OT_FIELD   + ID_DOT        + Precidence(0) + InvType(.binary),       
+    _colon     = OPERAND + OT_FIELD   + ID_COLON      + Precidence(0) + InvType(.binary), //      
+    _pos       = OPERAND + OT_UNARY   + ID_POS        + Precidence(1) + InvType(.unary_right),       
+    _neg       = OPERAND + OT_UNARY   + ID_NEG        + Precidence(1) + InvType(.unary_right),       
+    _not       = OPERAND + OT_UNARY   + ID_NOT        + Precidence(1) + InvType(.unary_right),       
+    _tilde     = OPERAND + OT_UNARY   + ID_TILDE      + Precidence(1) + InvType(.unary_right),       
+    _typecast  = OPERAND + OT_NWIDTH  + ID_TYPECAST   + Precidence(1) + InvType(.binary), //    
+    _mul       = OPERAND + OT_ARITH   + ID_MUL        + Precidence(2) + InvType(.binary),       
+    _div       = OPERAND + OT_ARITH   + ID_DIV        + Precidence(2) + InvType(.binary),       
+    _mod       = OPERAND + OT_ARITH   + ID_MOD        + Precidence(2) + InvType(.binary),       
+    _bsl       = OPERAND + OT_ARITH   + ID_BSL        + Precidence(2) + InvType(.binary),       
+    _brl       = OPERAND + OT_ARITH   + ID_BRL        + Precidence(2) + InvType(.binary),       
+    _bsr       = OPERAND + OT_ARITH   + ID_BSR        + Precidence(2) + InvType(.binary),       
+    _brr       = OPERAND + OT_ARITH   + ID_BRR        + Precidence(2) + InvType(.multi_arg), //      
+    _add       = OPERAND + OT_ARITH   + ID_ADD        + Precidence(3) + InvType(.binary),       
+    _sub       = OPERAND + OT_ARITH   + ID_SUB        + Precidence(3) + InvType(.binary), //    
+    _and       = OPERAND + OT_BITWISE + ID_AND        + Precidence(4) + InvType(.binary), //  
+    _xor       = OPERAND + OT_BITWISE + ID_XOR        + Precidence(5) + InvType(.binary), //      
+    _or        = OPERAND + OT_BITWISE + ID_OR         + Precidence(6) + InvType(.binary), //      
+    _lt        = OPERAND + OT_COMP    + ID_LT         + Precidence(7) + InvType(.binary),       
+    _le        = OPERAND + OT_COMP    + ID_LE         + Precidence(7) + InvType(.binary),       
+    _eq        = OPERAND + OT_COMP    + ID_EQ         + Precidence(7) + InvType(.binary),       
+    _ge        = OPERAND + OT_COMP    + ID_GE         + Precidence(7) + InvType(.binary),       
+    _gt        = OPERAND + OT_COMP    + ID_GT         + Precidence(7) + InvType(.binary),       
+    _ne        = OPERAND + OT_COMP    + ID_NE         + Precidence(7) + InvType(.binary), //      
+    _kw_and    = OPERAND + OT_BOOL    + ID_KW_AND     + Precidence(8) + InvType(.binary), //      
+    _kw_or     = OPERAND + OT_BOOL    + ID_KW_AND     + Precidence(9) + InvType(.binary), //      
+    _assg      = OPERAND + ISSIMPASSG + ID_VAL_ASSG   + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _def_assg  = OPERAND + ISSIMPASSG + ID_DEF_ASSG   + Precidence(10) + InvType(.binary),     
+    _add_assg  = OPERAND + OT_ASSG    + ID_ADD        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _sub_assg  = OPERAND + OT_ASSG    + ID_SUB        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _mul_assg  = OPERAND + OT_ASSG    + ID_MUL        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _div_assg  = OPERAND + OT_ASSG    + ID_DIV        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _mod_assg  = OPERAND + OT_ASSG    + ID_MOD        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _bsl_assg  = OPERAND + OT_ASSG    + ID_BSL        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _brl_assg  = OPERAND + OT_ASSG    + ID_BRL        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _bsr_assg  = OPERAND + OT_ASSG    + ID_BSR        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _brr_assg  = OPERAND + OT_ASSG    + ID_BRR        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _and_assg  = OPERAND + OT_ASSG    + ID_AND        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _xor_assg  = OPERAND + OT_ASSG    + ID_XOR        + Precidence(10) + InvType(.binary)        + CANEXPRROOT,      
+    _or_assg   = OPERAND + OT_ASSG    + ID_OR         + Precidence(10) + InvType(.binary)        + CANEXPRROOT,       
 
     _left_paren     = STRUCTURAL + CAPRIGHT + ID_PAREN,    
     _right_paren    = STRUCTURAL + CAPLEFT  + ID_PAREN,    
@@ -253,9 +259,22 @@ pub const TokenType = enum (u32) {
     pub inline fn GetOpType(self: @This()) u32 {
         return self.Int() & M_OPTYPE;
     }
+    pub inline fn IsSubsArg(self: @This()) bool {
+        return self.Int() & ISSUBSARG == 1;
+    }
     pub inline fn GetPrec(self: @This()) u32 {
-        const bits: u32 = @intCast(31 - @clz(NUMPRECS));
-        return (self.Int() >> OPPRECPOS) & (1 << bits - 1);
+        const bits: u32 = @intCast(32 - @clz(@as(u32, NUMPRECS)));
+        return (self.Int() >> OPPRECPOS) & ((1 << bits) - 1);
+    }
+
+    pub inline fn Converse(self: @This()) u32 {
+        return self.Int() ^ CAPRIGHT ^ CAPLEFT;
+    }
+
+    pub inline fn GetInvokeType(self: @This()) InvokeType {
+        const val: u32 = self.Int() >> INVTYPEPOS;
+        const mask = ~@intFromEnum(InvokeType.binary);
+        return @enumFromInt(val & mask);
     }
 };
 
@@ -263,6 +282,18 @@ fn Precidence(val: comptime_int) u32 {
     if (val < 0) @compileError("Cannot have a negative precidence");
     if (val >= NUMPRECS) @compileError( std.fmt.comptimePrint("Precidence greater than maximum declared precidence ({})", .{NUMPRECS}));
     return val << OPPRECPOS;
+}
+
+fn InvType(val: InvokeType) u32 {
+    return @as(u32, @intFromEnum(val)) << INVTYPEPOS;
+}
+
+test "Precidence" {
+    try std.testing.expectEqual(3, TokenType._add.GetPrec());
+}
+
+test "Invoke Type" {
+    try std.testing.expectEqual(InvokeType.multi_arg, TokenType._funccall.GetInvokeType());
 }
 
 const OpSymPair = struct {

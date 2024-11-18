@@ -66,6 +66,7 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
     var maybeCast = false;
     var callable = false;
     var unaryCoerce = true;
+    var dot = false;
 
     const parentype = enum {
         NA,
@@ -89,7 +90,7 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
         };
         expr.PopAllFront(strs.IsWS);
         const ntype = nToken.ttype;
-        unaryCoerce = ntype.CanCapRight() or ntype.IsOperand();
+        unaryCoerce = (ntype.IsStructural() and ntype.CanCapRight()) or (!dot and ntype.IsOperand());
 
         //<callable>() -> function call
         if (callable and ntype == ._left_paren){
@@ -107,16 +108,19 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
             try tkns.append( Token{
                 .textref = nToken.textref.NewReader(), 
                 .ttype = ._arrayindx} );
+        } else if (ntype == ._left_curly){
+            try tkns.append( Token{
+                .textref = nToken.textref.NewReader(), 
+                .ttype = ._structinst} );
         }
 
-        if (ntype.IsOperand()){
+        if (!dot and ntype.IsOperand()){
             callable = false;
             canCast = true;
-        }
-        else if (ntype.IsIdent()){
+        } else if (dot and ntype.IsOperand() or ntype.IsIdent()){
             callable = true;
             canCast = false;
-        }
+        } 
 
         maybeCast = false;
         
@@ -157,6 +161,7 @@ pub fn ExprToTokens(alloc: std.mem.Allocator, expr: *Str) !Vec(Token) {
         if (ntype == ._semicolon){
             break: loop tkns;
         }
+        dot = ntype == ._dot;
     };
 
     if (pairs.items.len != 0){

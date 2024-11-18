@@ -14,6 +14,8 @@ const TokenType = Tkns.TokenType;
 const Tknz = @import("newtokenizer.zig");
 const Token = Tknz.Token;
 
+const Ast = @import("newast.zig");
+
 pub const Exprnode = struct {
     dtype: Dtype,
     textref: Str,
@@ -246,15 +248,20 @@ fn ParseExpr(alloc: std.mem.Allocator, file: *Str) !?Expr {
 }
 
 fn ParseSimpleExpr(alloc: std.mem.Allocator, file: *Str) !?Expr { 
-    _ = try Tknz.ExprToTokens(alloc, file);
-    return .{
-        .simple = Expr.Simple{ 
-            .root = Exprnode{
-                .dtype = DEFERTYPE, 
-                .children = undefined, 
-                .textref = undefined, 
-                .token = undefined, 
-                .value = undefined}}};
+    const tkns = (try Tknz.ExprToTokens(alloc, file)).items;
+    if (tkns.len == 0) return null;
+    if (tkns[0].ttype.IsSubsArg()){
+        const tree = try Ast.TreeifyExpr(alloc, tkns[1..]);
+        var children = Vec(Exprnode).init(alloc);
+        try children.append(tree);
+        return .{
+            .simple = Expr.Simple{ 
+                .root = Exprnode{.token = tkns[0], .children = children}}};
+    } else {
+        return .{
+            .simple = Expr.Simple{ 
+                .root = try Ast.TreeifyExpr(alloc, tkns)}};
+    }
 }
 
 const ArgsToVars = @compileError("Unimplemented");
