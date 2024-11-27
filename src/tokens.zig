@@ -260,7 +260,7 @@ pub const TokenType = enum (u32) {
         return self.Int() & M_OPTYPE;
     }
     pub inline fn IsSubsArg(self: @This()) bool {
-        return self.Int() & ISSUBSARG == 1;
+        return self.Int() & ISSUBSARG != 0;
     }
     pub inline fn GetPrec(self: @This()) u32 {
         const bits: u32 = @intCast(32 - @clz(@as(u32, NUMPRECS)));
@@ -294,6 +294,10 @@ test "Precidence" {
 
 test "Invoke Type" {
     try std.testing.expectEqual(InvokeType.multi_arg, TokenType._funccall.GetInvokeType());
+}
+
+test "Subs Arg" {
+    try std.testing.expectEqual(true, TokenType._return.IsSubsArg());
 }
 
 const OpSymPair = struct {

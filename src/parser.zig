@@ -14,6 +14,8 @@ const TokenType = Tkns.TokenType;
 const Tknz = @import("newtokenizer.zig");
 const Token = Tknz.Token;
 
+const Trie = @import("trie.zig");
+
 const Ast = @import("newast.zig");
 
 pub const Exprnode = struct {
@@ -166,9 +168,20 @@ const Expr = union (enum) {
 
 const TypeParseError = error{Expected_Slice_or_Arraytype, Expected_Array_End, Array_Too_Large, Expected_Right_Parenthesis, Expected_Keyword_Copy, OutOfMemory, Not_A_Number, Int_Too_Large, Symbol_Invalid_For_Int, IndexOutOfBounds, No_Chars_Found, Zero_Width_Type, Parse_Token_Failure};
 
+pub const NameType = enum {
+    Var,
+    Type,
+    Func,
+    Struct,
+    Enum,
+    Union,
+};
+
 pub fn ParseProgram(alloc: std.mem.Allocator, file: *Str) !Program {
     var prog = Program {.name = "", .decls = undefined};
     var decls = Vec(TLDecl).init(alloc);
+    var statics = Vec(Trie.ID).init(alloc);
+    
     errdefer decls.deinit();
     while (try ParseDecl(alloc, file)) |decl| decls.append(decl);
     prog.decls = decls.toOwnedSlice();
@@ -251,15 +264,19 @@ fn ParseSimpleExpr(alloc: std.mem.Allocator, file: *Str) !?Expr {
     const tkns = (try Tknz.ExprToTokens(alloc, file)).items;
     if (tkns.len == 0) return null;
     if (tkns[0].ttype.IsSubsArg()){
-        const tree = try Ast.TreeifyExpr(alloc, tkns[1..]);
         var children = Vec(Exprnode).init(alloc);
-        try children.append(tree);
+        try children.append(try Ast.TreeifyExpr(alloc, tkns[1..]));
         return .{
-            .simple = Expr.Simple{ 
-                .root = Exprnode{.token = tkns[0], .children = children}}};
+            .simple = Expr.Simple { 
+                .root = Exprnode {
+                    .token = tkns[0], 
+                    .children = children,
+                    .textref = tkns[0].textref,
+                    .dtype = undefined,
+                    .value = undefined,}}};
     } else {
         return .{
-            .simple = Expr.Simple{ 
+            .simple = Expr.Simple { 
                 .root = try Ast.TreeifyExpr(alloc, tkns)}};
     }
 }

@@ -62,6 +62,7 @@ pub fn TreeifyExpr(alloc: std.mem.Allocator, tkns: []Token) !Exprnode {
             //left.textref.Error("`{s}`\n", .{@tagName(left.token.ttype)});
         }
         nex.data.textref.Error("Did not reduce, first token has type `{s}`\n", .{@tagName(left.token.ttype)});
+        TknList.first.?.data.textref.Error("First token was\n", .{});
         return error.Unreduced_Operand;
     };
     return TknList.first.?.data;
@@ -309,7 +310,7 @@ test "Wrapping" {
 
     file = Str.FromSlice("a + b;");
     tokens = try Tknz.ExprToTokens(alloc, &file);
-    const wrapped = try WrapTkns(alloc, tokens);
+    const wrapped = try WrapTkns(alloc, tokens.items);
     try expect(wrapped.first.?.data.token.ttype == ._ident);
     try expect(wrapped.first.?.next.?.data.token.ttype == ._add);
     try expect(wrapped.first.?.next.?.next.?.data.token.ttype == ._ident);
@@ -334,7 +335,7 @@ test "Basic Folding" {
 
     file = Str.FromSlice("a + b;");
     tokens = try Tknz.ExprToTokens(alloc, &file);
-    wrapped = try WrapTkns(alloc, tokens);
+    wrapped = try WrapTkns(alloc, tokens.items);
 
     try ReduceCenter(&wrapped, wrapped.first.?.next.?);
     try expect(wrapped.first.?.data.token.ttype == ._add);
@@ -345,7 +346,7 @@ test "Basic Folding" {
 
     file = Str.FromSlice("* b;");
     tokens = try Tknz.ExprToTokens(alloc, &file);
-    wrapped = try WrapTkns(alloc, tokens);
+    wrapped = try WrapTkns(alloc, tokens.items);
 
     err = ReduceCenter(&wrapped, wrapped.first.?);
     try expectErr(error.Reduction_of_Expression_Boundary, err);
@@ -353,7 +354,7 @@ test "Basic Folding" {
 
     file = Str.FromSlice("~ b;");
     tokens = try Tknz.ExprToTokens(alloc, &file);
-    wrapped = try WrapTkns(alloc, tokens);
+    wrapped = try WrapTkns(alloc, tokens.items);
 
     try ReduceLeft(&wrapped, wrapped.first.?);
     try expect(wrapped.first.?.data.token.ttype == ._tilde);
@@ -363,7 +364,7 @@ test "Basic Folding" {
     
     file = Str.FromSlice("~)");
     tokens = try Tknz.ExprToTokens(alloc, &file);
-    wrapped = try WrapTkns(alloc, tokens);
+    wrapped = try WrapTkns(alloc, tokens.items);
 
     err = ReduceLeft(&wrapped, wrapped.first.?);
     try expectErr(error.Reduction_of_Expression_Boundary, err);
@@ -382,7 +383,7 @@ test "Order of Ops" {
 
         var file = Str.FromSlice("a + b * c;");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const wrapped = try WrapTkns(alloc, tokens);
+        const wrapped = try WrapTkns(alloc, tokens.items);
         const ops = try OrderedOps(alloc, wrapped);
         try expectEql(2, ops.items.len);
         try expectEql(tokens.items[3].ttype, ops.items[0].data.token.ttype);
@@ -395,7 +396,7 @@ test "Order of Ops" {
 
         var file = Str.FromSlice("a + b + c;");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const wrapped = try WrapTkns(alloc, tokens);
+        const wrapped = try WrapTkns(alloc, tokens.items);
         const ops = try OrderedOps(alloc, wrapped);
         try expectEql(2, ops.items.len);
         try expectEql(tokens.items[1], ops.items[0].data.token);
@@ -408,7 +409,7 @@ test "Order of Ops" {
 
         var file = Str.FromSlice("a = b = c;");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const wrapped = try WrapTkns(alloc, tokens);
+        const wrapped = try WrapTkns(alloc, tokens.items);
         const ops = try OrderedOps(alloc, wrapped);
         try expectEql(2, ops.items.len);
         try expectEql(tokens.items[3], ops.items[0].data.token);
@@ -421,7 +422,7 @@ test "Order of Ops" {
 
         var file = Str.FromSlice("(u16)f(x);");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const wrapped = try WrapTkns(alloc, tokens);
+        const wrapped = try WrapTkns(alloc, tokens.items);
         const ops = try OrderedOps(alloc, wrapped);
         try expectEql(2, ops.items.len);
         try expectEql(tokens.items[5], ops.items[0].data.token);
@@ -434,7 +435,7 @@ test "Order of Ops" {
 
         var file = Str.FromSlice("2 * -1;");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const wrapped = try WrapTkns(alloc, tokens);
+        const wrapped = try WrapTkns(alloc, tokens.items);
         const ops = try OrderedOps(alloc, wrapped);
         try expectEql(2, ops.items.len);
         try expectEql(tokens.items[2], ops.items[0].data.token);
@@ -455,7 +456,7 @@ test "Full Ast" {
 
         var file = Str.FromSlice("a + b * c;");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const tree = try TreeifyExpr(alloc, tokens);
+        const tree = try TreeifyExpr(alloc, tokens.items);
         try expectEql(TokenType._add, tree.token.ttype);
         const child0 = tree.children.items[0];
         try expectEql(TokenType._ident, child0.token.ttype);
@@ -477,7 +478,7 @@ test "Full Ast" {
         //var file = Str.FromSlice("6^3 | h * abc.&.* + 3 - f.*[34](arg1, arg2).&.*.test().*.hello;");
         //var file = Str.FromSlice("ary[-idx + off * scale];");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const tree = try TreeifyExpr(alloc, tokens);
+        const tree = try TreeifyExpr(alloc, tokens.items);
         _ = tree;
         //DisplayTree(tree);
     }
@@ -490,7 +491,7 @@ test "Full Ast" {
         var file = Str.FromSlice("6^3 | h * -abc.&.* + 3 - ~f.*[34](arg1, arg2).&.*.test().*.hello;");
         //var file = Str.FromSlice("ary[-idx + off * scale];");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const tree = try TreeifyExpr(alloc, tokens);
+        const tree = try TreeifyExpr(alloc, tokens.items);
 
         _ = tree;
         //DisplayTree(tree);
@@ -504,7 +505,7 @@ test "Full Ast" {
         var file = Str.FromSlice("obj = Vec{x:=0, y:=1};");
         //var file = Str.FromSlice("ary[-idx + off * scale];");
         const tokens = try Tknz.ExprToTokens(alloc, &file);
-        const tree = try TreeifyExpr(alloc, tokens);
+        const tree = try TreeifyExpr(alloc, tokens.items);
 
         _ = tree;
         //DisplayTree(tree);
