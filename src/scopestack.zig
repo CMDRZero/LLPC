@@ -39,9 +39,27 @@ pub fn ScopeStack(comptime T: type) type {
             return self.addOneAssumeCapacity();
         }
 
-        pub fn append(self: *Self, item: T) Allocator.Error!void {
+        pub fn append(self: *Self, item: T) std.mem.Allocator.Error!void {
             const new_item_ptr = try self.addOne();
             new_item_ptr.* = item;
+        }
+
+        pub fn ensureTotalCapacityPrecise(self: *Self, new_capacity: usize) std.mem.Allocator.Error!void {
+            // Here we avoid copying allocated but unused bytes by
+            // attempting a resize in place, and falling back to allocating
+            // a new buffer and doing our own copy. With a realloc() call,
+            // the allocator implementation would pointlessly copy our
+            // extra capacity.
+            const old_memory = self.allocatedSlice();
+            if (self.allocator.resize(old_memory, new_capacity)) {
+                self.capacity = new_capacity;
+            } else {
+                const new_memory = try self.allocator.alignedAlloc(T, alignment, new_capacity);
+                @memcpy(new_memory[0..self.items.len], self.items);
+                self.allocator.free(old_memory);
+                self.items.ptr = new_memory.ptr;
+                self.capacity = new_memory.len;
+            }
         }
     };
 }

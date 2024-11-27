@@ -1,0 +1,30 @@
+fn (_) name (copy, mut, const) {
+  #Code goes here
+}
+
+decl var
+array ary
+inst var in ary at _
+undecl var
+final var
+
+x = y
+x += y
+x <<<= y
+x.* = y
+x = y.*
+x = y.&
+
+lbl:
+x = lbl
+x = 0xFFFF
+
+from lbl
+goto lbl
+if cmp x +> 0 goto lbl
+if flag neg goto lbl
+
+anonfmt (copy x, const y, mut z)
+call w
+call func(x, y, z)
+x, y, z = args
