@@ -15,8 +15,32 @@ const Tknz = @import("newtokenizer.zig");
 const Token = Tknz.Token;
 
 const Trie = @import("trie.zig");
+const ScopeStack = @import("scopestack.zig");
 
 const Ast = @import("newast.zig");
+
+pub const CompContext = struct {
+    const Self = @This();
+
+    alloc: std.mem.Allocator,
+    file: Str,
+    nametrie: Trie.Trie,
+    statics: Vec(Static),
+    locals: ScopeStack.ScopeStack(Trie.ID),
+
+    pub fn AssertNewID(self: Self, id: Trie.ID) !void {
+        for (self.statics.items) |static| if (static.sid == id) return error.Assertion_Failure;
+        for (self.locals.vec.items) |local| if (local == id) return error.Assertion_Failure;
+    }
+};
+
+pub const Static = struct {
+    sid: Trie.ID,
+    data: union (enum) {
+        type: Dtype,
+        expr: Exprnode,
+    }
+};
 
 pub const Exprnode = struct {
     dtype: Dtype,
@@ -127,7 +151,6 @@ const Expr = union (enum) {
 
     //const Block = @compileError("Unimplemented");
     const Block = struct {
-        locals: [] Var,
         exprs: [] Expr,
     };
 
@@ -180,24 +203,31 @@ pub const NameType = enum {
 pub fn ParseProgram(alloc: std.mem.Allocator, file: *Str) !Program {
     var prog = Program {.name = "", .decls = undefined};
     var decls = Vec(TLDecl).init(alloc);
-    var statics = Vec(Trie.ID).init(alloc);
-    
+
+    var context = CompContext{
+        .alloc = alloc,
+        .file = file.*,
+        .locals = ScopeStack.ScopeStack(Trie.ID){},
+        .nametrie = Trie.Trie.Init(alloc),
+        .statics = Vec(Static).init(alloc),
+    };
+
     errdefer decls.deinit();
-    while (try ParseDecl(alloc, file)) |decl| decls.append(decl);
+    while (try ParseDecl(&context)) |decl| decls.append(decl);
     prog.decls = decls.toOwnedSlice();
     return prog;
 }
 
-pub fn ParseDecl(alloc: std.mem.Allocator, file: *Str) !?TLDecl {
-    if (try ParseFunction(alloc, file)) |func| {
+pub fn ParseDecl(cc: *CompContext) !?TLDecl {
+    if (try ParseFunction(cc)) |func| {
         return TLDecl {._func = func};
-    } else if (try ParseTLValue(alloc, file)) |val| {
+    } else if (try ParseTLValue(cc)) |val| {
         return TLDecl {._val = val};
-    } else if (try ParseUnion(alloc, file)) |uni| {
+    } else if (try ParseUnion(cc)) |uni| {
         return TLDecl {._union = uni};
-    } else if (try ParseEnum(alloc, file)) |enu| {
+    } else if (try ParseEnum(cc)) |enu| {
         return TLDecl {._enum = enu};
-    } else if (try ParseStruct(alloc, file)) |strc| {
+    } else if (try ParseStruct(cc)) |strc| {
         return TLDecl {._struct = strc};
     } else {
         return null;
@@ -205,79 +235,87 @@ pub fn ParseDecl(alloc: std.mem.Allocator, file: *Str) !?TLDecl {
 }
 
 //Can either return a error, which means unrecoverable failure, a null, meaning can't parse but safe to keep compiling, or a function.
-pub fn ParseFunction(alloc: std.mem.Allocator, file: *Str) !?TLDecl.Func {
-    file.PopAllFront(strs.IsWS);
-    if (!file.CanPopFront()) return null; //If EOF, return null to signal a safe failure to parse
+pub fn ParseFunction(cc: *CompContext) !?TLDecl.Func {
+    cc.file.PopAllFront(strs.IsWS);
+    if (!cc.file.CanPopFront()) return null; //If EOF, return null to signal a safe failure to parse
 
-    const ret = try ParseTupleType(alloc, file) orelse return error.Expected_Return_Type;
-    const name = try ParseIdent(file);
-    try ExpectToken(file, ._left_paren);
-    var argsvec = Vec(Arg).init(alloc);
-    while (try ParseArg(alloc, file)) |arg| try argsvec.append(arg);
-    try ExpectToken(file, ._right_paren);
-    const body = try ParseBlock(alloc, file) orelse return error.Expected_Function_Body;
+    const ret = try ParseTupleType(cc) orelse return error.Expected_Return_Type;
+    const name = try ParseIdent(&cc.file);
+    try ExpectToken(&cc.file, ._left_paren);
+    var argsvec = Vec(Arg).init(cc.alloc);
+    while (try ParseArg(cc)) |arg| try argsvec.append(arg);
+    try ExpectToken(&cc.file, ._right_paren);
+
+    for (argsvec.items) |arg| {
+        const id = try cc.nametrie.WriteGet(arg.name);
+        try cc.AssertNewID(id);
+        try cc.locals.append(id);
+    }
+
+    const body = try ParseBlock(cc) orelse return error.Expected_Function_Body;
     return TLDecl.Func{.name = name, .params = try argsvec.toOwnedSlice(), .ret = ret, .body = body};
 }
 
-fn ParseTupleType(alloc: std.mem.Allocator, file: *Str) !?[]Dtype {
-    var dtypes = Vec(Dtype).init(alloc);
+fn ParseTupleType(cc: *CompContext) !?[]Dtype {
+    var dtypes = Vec(Dtype).init(cc.alloc);
     errdefer dtypes.deinit();
-    if (try QueryToken(file, ._left_paren)){
-        while (ParseType(alloc, file)) |dtype| {
+    if (try QueryToken(&cc.file, ._left_paren)){
+        while (ParseType(cc.alloc, &cc.file)) |dtype| {
             try dtypes.append(dtype orelse return error.Expected_Type);
-            if (try QueryToken(file, ._right_paren)) break;
-            _ = try QueryToken(file, ._comma);
+            if (try QueryToken(&cc.file, ._right_paren)) break;
+            _ = try QueryToken(&cc.file, ._comma);
         } else |err| return err;
     } else {
-        try dtypes.append(try ParseType(alloc, file) orelse return null);
+        try dtypes.append(try ParseType(cc.alloc, &cc.file) orelse return null);
     }
     return try dtypes.toOwnedSlice();
 }
 
-fn ParseArg(alloc: std.mem.Allocator, file: *Str) !?Arg {
-    const dtype = try ParseArgType(alloc, file) orelse return null;
-    const name = try ParseIdent(file);
+fn ParseArg(cc: *CompContext) !?Arg {
+    const dtype = try ParseArgType(cc.alloc, &cc.file) orelse return null;
+    const name = try ParseIdent(&cc.file);
     return Arg{.name = name, .dtype = dtype};
 }
 
-fn ParseBlock(alloc: std.mem.Allocator, file: *Str) !?Expr.Block {
-    var exprs = Vec(Expr).init(alloc);
+fn ParseBlock(cc: *CompContext) !?Expr.Block {
+    var exprs = Vec(Expr).init(cc.alloc);
     errdefer exprs.deinit();
 
-    if (!try QueryToken(file, ._left_curly)) return null;
-    while (!try QueryToken(file, ._right_curly)) {
-        const expr = try ParseExpr(alloc, file) orelse {
-            if (!try QueryToken(file, ._right_curly)) return error.Expected_Closing_Brace;
+    if (!try QueryToken(&cc.file, ._left_curly)) return null;
+    while (!try QueryToken(&cc.file, ._right_curly)) {
+        const expr = try ParseExpr(cc) orelse {
+            if (!try QueryToken(&cc.file, ._right_curly)) return error.Expected_Closing_Brace;
             break;
         };
         try exprs.append(expr);
     } 
-    return Expr.Block{.locals = undefined, .exprs = try exprs.toOwnedSlice()};
+    return Expr.Block{.exprs = try exprs.toOwnedSlice()};
 }
 
-fn ParseExpr(alloc: std.mem.Allocator, file: *Str) !?Expr { 
-    if (!file.CanPopFront()) return null; //If EOF, return null to signal a safe failure to parse
-    return try ParseSimpleExpr(alloc, file) orelse error.Expected_Expression;
+fn ParseExpr(cc: *CompContext) !?Expr { 
+    if (!cc.file.CanPopFront()) return null; //If EOF, return null to signal a safe failure to parse
+    return try ParseSimpleExpr(cc) orelse error.Expected_Expression;
 }
 
-fn ParseSimpleExpr(alloc: std.mem.Allocator, file: *Str) !?Expr { 
-    const tkns = (try Tknz.ExprToTokens(alloc, file)).items;
+fn ParseSimpleExpr(cc: *CompContext) !?Expr { 
+    const tkns = (try Tknz.ExprToTokens(cc.alloc, &cc.file)).items;
+    
     if (tkns.len == 0) return null;
     if (tkns[0].ttype.IsSubsArg()){
-        var children = Vec(Exprnode).init(alloc);
-        try children.append(try Ast.TreeifyExpr(alloc, tkns[1..]));
+        var children = Vec(Exprnode).init(cc.alloc);
+        try children.append(try Ast.TreeifyExpr(cc.alloc, tkns[1..]));
         return .{
             .simple = Expr.Simple { 
                 .root = Exprnode {
                     .token = tkns[0], 
                     .children = children,
                     .textref = tkns[0].textref,
-                    .dtype = undefined,
+                    .dtype = VOID,
                     .value = undefined,}}};
     } else {
         return .{
             .simple = Expr.Simple { 
-                .root = try Ast.TreeifyExpr(alloc, tkns)}};
+                .root = try Ast.TreeifyExpr(cc.alloc, tkns)}};
     }
 }
 
@@ -579,9 +617,16 @@ test "Parse Func" {
     {
         strs.forceShowErrors = true;
         defer strs.forceShowErrors = false;
-        var stream = Str.FromSlice("u16 addOne(u16 copy x) { x += 1; return x; }");
 
-        const func = try ParseFunction(alloc, &stream) orelse return error.Null;
+        var context = CompContext{
+            .alloc = alloc,
+            .file = Str.FromSlice("u16 addOne(u16 copy x) { x += 1; return x; }"),
+            .locals = ScopeStack.ScopeStack(Trie.ID).Init(alloc),
+            .nametrie = Trie.Trie.Init(alloc),
+            .statics = Vec(Static).init(alloc),
+        };
+
+        const func = try ParseFunction(&context) orelse return error.Null;
         try expectEqlSlice(u8, "addOne"[0..], func.name);
         try expectEql(1, func.params.len);
         try expectEql(ArgType{.dtype = U16, .aquisType = .aqCopy}, func.params[0].dtype);
@@ -590,19 +635,24 @@ test "Parse Func" {
     }
 
     {
-        const msg = 
-        \\void main() {
-        \\  int sum = 2 + 2;
-        \\  assert sum == 4;
-        \\  std:println(msg);
-        \\}
-        ;
+        var context = CompContext{
+            .alloc = alloc,
+            .file = Str.FromSlice(
+                \\void main() {
+                \\  u16 sum = 2 + 2;
+                \\  assert sum == 4;
+                \\  std:println(msg);
+                \\}
+            ),
+            .locals = ScopeStack.ScopeStack(Trie.ID).Init(alloc),
+            .nametrie = Trie.Trie.Init(alloc),
+            .statics = Vec(Static).init(alloc),
+        };
 
         strs.forceShowErrors = true;
         defer strs.forceShowErrors = false;
-        var stream = Str.FromSlice(msg);
 
-        const func = try ParseFunction(alloc, &stream) orelse return error.Null;
+        const func = try ParseFunction(&context) orelse return error.Null;
         try expectEqlSlice(u8, "main"[0..], func.name);
         try expectEql(0, func.params.len);
         try expectEql(1, func.ret.len);

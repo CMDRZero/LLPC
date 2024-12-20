@@ -55,6 +55,10 @@ pub const Trie = struct {
         if (curr.next == .branch) return null;
         return curr.next.leaf;
     }
+
+    pub fn WriteGet(self: *Self, string: []const u8) !ID {
+        return self.Lookup(string) orelse try self.Register(string);
+    }
 };
 
 const TrieNode = struct {
